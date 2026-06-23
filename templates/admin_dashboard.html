@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Tableau de bord cabinet</h2>
+  <p class="muted">Vue d'ensemble de tous les clients et de leurs exercices.</p>
+  <a class="btn" href="/admin/clients/new">+ Nouveau client</a>
+</div>
+<div class="card">
+  <table>
+    <tr><th>Client</th><th>NCC</th><th>Exercices</th><th></th></tr>
+    {% for c in clients %}
+    <tr>
+      <td>{{ c['raison_sociale'] }}</td>
+      <td>{{ c['ncc'] or '—' }}</td>
+      <td>{{ counts[c['id']] }}</td>
+      <td><a href="/client/{{ c['id'] }}">Ouvrir →</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">Aucun client pour l'instant.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

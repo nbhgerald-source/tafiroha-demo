@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>{{ client['raison_sociale'] }}</h2>
+  <p class="muted">NCC : {{ client['ncc'] or '—' }} · NTD : {{ client['ntd'] or '—' }}</p>
+  {% if user['role'] == 'admin' %}<a href="/admin">← Retour au cabinet</a>{% endif %}
+</div>
+<div class="card">
+  <h3>Historique des exercices</h3>
+  <table>
+    <tr><th>Année</th><th>Libellé</th><th></th></tr>
+    {% for e in exercices %}
+    <tr>
+      <td>{{ e['annee'] }}</td>
+      <td>{{ e['libelle'] }}</td>
+      <td><a href="/exercice/{{ e['id'] }}">Ouvrir →</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">Aucun exercice enregistré.</td></tr>
+    {% endfor %}
+  </table>
+  <p style="margin-top:14px;"><a class="btn" href="/client/{{ client['id'] }}/exercices/new">+ Nouvel exercice</a></p>
+</div>
+{% endblock %}

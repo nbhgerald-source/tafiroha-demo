@@ -1,0 +1,1376 @@
+{% extends "base.html" %}
+
+{% macro dyn_table(sheet, count_key, coord_prefix, desig_prefix, rows, cols, totals, n, anchor=None, nv_vals=None, nv_label=None) %}
+<form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  <input type="hidden" name="note3_sheet" value="{{ sheet }}">
+  <input type="hidden" name="cell_{{ count_key }}" value="{{ n }}">
+  <table>
+    <tr>
+      <th>Désignation</th>
+      {% for col, label, manual in cols %}<th class="num">{{ label }}</th>{% endfor %}
+    </tr>
+    {% for r in rows %}
+    <tr>
+      <td><input type="text" name="texte_{{ desig_prefix }}_{{ r.idx }}" value="{{ r.designation }}" placeholder="Désignation"></td>
+      {% for col, label, manual in cols %}
+      <td class="num"><input type="text" size="10" name="cell_{{ coord_prefix }}_{{ col }}_{{ r.idx }}" value="{{ r.vals[col]|fmt }}"></td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    {% if nv_vals is not none %}
+    <tr>
+      <td>{{ nv_label or 'NON VENTILE' }}</td>
+      {% for col, label, manual in cols %}
+      <td class="num"><input type="text" size="10" name="cell_NV_{{ col }}" value="{{ nv_vals[col]|fmt }}"></td>
+      {% endfor %}
+    </tr>
+    {% endif %}
+    <tr class="total">
+      <td>TOTAL</td>
+      {% for col, label, manual in cols %}<td class="num">{{ totals[col]|fmt }}</td>{% endfor %}
+    </tr>
+  </table>
+  <button class="btn" type="submit" name="ajouter_{{ count_key }}" value="1">+ Ajouter une ligne</button>
+  <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+</form>
+{% endmacro %}
+
+{% macro dgi_simple_table(sheet, anchor, title, data) %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ anchor }}">
+  <h2>{{ title }}</h2>
+  <form method="post" action="#{{ anchor }}">
+    <input type="hidden" name="note3_sheet" value="{{ sheet }}">
+    <table>
+      <tr>
+        <th>Désignation</th>
+        {% for col, label in data.cols %}<th class="num">{{ label }}</th>{% endfor %}
+      </tr>
+      {% for r in data.rows %}
+      <tr{% if r.kind == 'total' %} class="total"{% endif %}>
+        <td>{{ r.label }}</td>
+        {% for col, label in data.cols %}
+        <td class="num">
+          {% if r.kind == 'total' or col in (r.computed_cols or []) %}{{ r.vals[col]|fmt }}
+          {% else %}<input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|fmt }}">{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+</div>
+{% endmacro %}
+
+{% macro note30_group(sheet, g, count_key, coord_prefix, desig_prefix, anchor=None) %}
+<form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  <input type="hidden" name="note3_sheet" value="{{ sheet }}">
+  <input type="hidden" name="cell_{{ count_key }}" value="{{ g.n_detail }}">
+  <table>
+    <tr>
+      <th>Désignation</th>
+      <th class="num">Année N</th>
+      <th class="num">Année N-1</th>
+      <th class="num">Variation %</th>
+    </tr>
+    <tr class="total">
+      <td>{{ g.total.label }}</td>
+      <td class="num">{{ g.total.vals.F|fmt }}</td>
+      <td class="num">{{ g.total.vals.G|fmt }}</td>
+      <td class="num">{{ g.total.vals.H|pct }}</td>
+    </tr>
+    {% for r in g.detail_rows %}
+    <tr>
+      <td style="padding-left:1.5em"><input type="text" name="texte_{{ desig_prefix }}_{{ r.idx }}" value="{{ r.designation }}" placeholder="Détail (à préciser)"></td>
+      <td class="num"><input type="text" size="10" name="cell_{{ coord_prefix }}_F_{{ r.idx }}" value="{{ r.vals.F|fmt }}"></td>
+      <td class="num"><input type="text" size="10" name="cell_{{ coord_prefix }}_G_{{ r.idx }}" value="{{ r.vals.G|fmt }}"></td>
+      <td class="num">{{ r.vals.H|pct }}</td>
+    </tr>
+    {% endfor %}
+    {% for r in g.fixed_rows %}
+    <tr>
+      <td>{{ r.label }}</td>
+      <td class="num"><input type="text" size="10" name="cell_F{{ r.row }}" value="{{ r.vals.F|fmt }}"></td>
+      <td class="num"><input type="text" size="10" name="cell_G{{ r.row }}" value="{{ r.vals.G|fmt }}"></td>
+      <td class="num">{{ r.vals.H|pct }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="total">
+      <td>{{ g.sous_total.label }}</td>
+      <td class="num">{{ g.sous_total.vals.F|fmt }}</td>
+      <td class="num">{{ g.sous_total.vals.G|fmt }}</td>
+      <td class="num">{{ g.sous_total.vals.H|pct }}</td>
+    </tr>
+  </table>
+  <button class="btn" type="submit" name="ajouter_{{ count_key }}" value="1">+ Ajouter une ligne de détail</button>
+  <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+</form>
+{% endmacro %}
+
+{% macro note13_table(note13, anchor=None) %}
+<form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  <input type="hidden" name="note3_sheet" value="NOTE 13">
+  <p>
+    <label>Valeur nominale des actions ou parts :
+      <input type="text" size="10" name="cell_L8" value="{{ note13.valeur_nominale|fmt }}">
+    </label>
+  </p>
+  <input type="hidden" name="cell__N_ASSOCIES" value="{{ note13.n }}">
+  <table>
+    <tr>
+      <th>Nom et prénoms ou raison sociale</th>
+      {% for col, label, manual in note13.cols %}<th class="num">{{ label }}</th>{% endfor %}
+      <th class="num">Montant total</th>
+    </tr>
+    {% for r in note13.detail_rows %}
+    <tr>
+      <td><input type="text" name="texte_assoc_nom_{{ r.idx }}" value="{{ r.designation }}" placeholder="Nom et prénoms ou raison sociale"></td>
+      {% for col, label, manual in note13.cols %}
+      <td class="num"><input type="text" size="8" name="cell_ASSOC_{{ col }}_{{ r.idx }}" value="{{ r.vals[col]|fmt }}"></td>
+      {% endfor %}
+      <td class="num">{{ r.vals.K|fmt }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td colspan="{{ note13.cols|length + 1 }}">Apporteurs, capital non appelé</td>
+      <td class="num"><input type="text" size="8" name="cell_K11" value="{{ note13.apporteurs_k|fmt }}"></td>
+    </tr>
+    <tr class="total">
+      <td colspan="{{ note13.cols|length + 1 }}">TOTAL</td>
+      <td class="num">{{ note13.total_k|fmt }}</td>
+    </tr>
+  </table>
+  <button class="btn" type="submit" name="ajouter__N_ASSOCIES" value="1">+ Ajouter une ligne</button>
+  <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+</form>
+{% endmacro %}
+
+{% macro note21_table(note21, anchor=None) %}
+<form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  <input type="hidden" name="note3_sheet" value="NOTE 21">
+  <input type="hidden" name="cell__N_PA" value="{{ note21.pa_n }}">
+  <table>
+    <tr>
+      <th>Rubrique</th>
+      {% for col, label, manual in note21.cols %}<th class="num">{{ label }}</th>{% endfor %}
+    </tr>
+    {% for r in note21.rows_a %}
+    <tr class="{{ 'total' if r.total else '' }}">
+      <td>{{ r.label }}</td>
+      {% for col, label, manual in note21.cols %}
+      <td class="num">
+        {% if col in r.manual_cols and not r.total %}
+        <input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|fmt }}">
+        {% else %}
+        {{ r.vals[col]|pct if '%' in label else r.vals[col]|fmt }}
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    <tr>
+      <td colspan="{{ note21.cols|length + 1 }}"><em>Produits accessoires à détailler par nature d'activité économique :</em></td>
+    </tr>
+    {% for r in note21.pa_rows %}
+    <tr>
+      <td><input type="text" name="texte_pa_designation_{{ r.idx }}" value="{{ r.designation }}" placeholder="Nature de l'activité économique"></td>
+      <td class="num"><input type="text" size="10" name="cell_PA_F_{{ r.idx }}" value="{{ r.F|fmt }}"></td>
+      <td class="num"><input type="text" size="10" name="cell_PA_G_{{ r.idx }}" value="{{ r.G|fmt }}"></td>
+      <td class="num"></td>
+    </tr>
+    {% endfor %}
+    <tr class="total">
+      <td>Produits accessoires (total ligne 27)</td>
+      <td class="num">{{ note21.pa_f|fmt }}</td>
+      <td class="num">{{ note21.pa_g|fmt }}</td>
+      <td class="num">{{ note21.pa_h|pct }}</td>
+    </tr>
+    {% for r in note21.rows_b %}
+    <tr class="{{ 'total' if r.total else '' }}">
+      <td>{{ r.label }}</td>
+      {% for col, label, manual in note21.cols %}
+      <td class="num">
+        {% if col in r.manual_cols and not r.total %}
+        <input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|fmt }}">
+        {% else %}
+        {{ r.vals[col]|pct if '%' in label else r.vals[col]|fmt }}
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  <button class="btn" type="submit" name="ajouter__N_PA" value="1">+ Ajouter une ligne (produits accessoires)</button>
+  <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+</form>
+{% endmacro %}
+
+{% macro note3b_table(rows, cols, anchor=None) %}
+<form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  <input type="hidden" name="note3_sheet" value="NOTE 3B">
+  <table>
+    <tr>
+      <th>Rubrique</th>
+      <th>Nature du contrat (I;M;A)</th>
+      {% for col, label, manual in cols %}<th class="num">{{ label }}</th>{% endfor %}
+    </tr>
+    {% for r in rows %}
+    <tr class="{{ 'total' if r.total else '' }}">
+      <td>{{ r.label }}</td>
+      <td>
+        {% if not r.total %}
+        <input type="text" size="6" name="texte_nature_contrat_{{ r.row }}" value="{{ r.nature_contrat }}" placeholder="I/M/A">
+        {% endif %}
+      </td>
+      {% for col, label, manual in cols %}
+      <td class="num">
+        {% if manual and not r.total %}
+        <input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|fmt }}">
+        {% else %}
+        {{ r.vals[col]|fmt }}
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+</form>
+{% endmacro %}
+
+{% macro note3e_table(note3e, anchor=None) %}
+<form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  <input type="hidden" name="note3_sheet" value="NOTE 3E">
+  <input type="hidden" name="cell__N_REEVAL" value="{{ note3e.n }}">
+  <p>
+    <label>Nature et date des réévaluations :
+      <textarea name="texte_nature_date" rows="2" style="width:100%">{{ note3e.nature_date }}</textarea>
+    </label>
+  </p>
+  <table>
+    <tr>
+      <th>Eléments réévalués par poste du bilan</th>
+      {% for col, label in note3e.cols %}<th class="num">{{ label }}</th>{% endfor %}
+    </tr>
+    {% for r in note3e.rows %}
+    <tr>
+      <td><input type="text" name="texte_reeval_poste_{{ r.idx }}" value="{{ r.designation }}" placeholder="Poste du bilan réévalué"></td>
+      {% for col, label in note3e.cols %}
+      <td class="num"><input type="text" size="10" name="cell_REEVAL_{{ col }}_{{ r.idx }}" value="{{ r.vals[col]|fmt }}"></td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    <tr class="total">
+      <td>TOTAL GENERAL</td>
+      {% for col, label in note3e.cols %}<td class="num">{{ note3e.totals[col]|fmt }}</td>{% endfor %}
+    </tr>
+  </table>
+  <button class="btn" type="submit" name="ajouter__N_REEVAL" value="1">+ Ajouter une ligne</button>
+  <p>
+    <label>Méthode de réévaluation utilisée :
+      <textarea name="texte_methode" rows="2" style="width:100%">{{ note3e.methode }}</textarea>
+    </label>
+  </p>
+  <p>
+    <label>Traitement fiscal de l'écart de réévaluation et des amortissements supplémentaires :
+      <textarea name="texte_traitement_fiscal" rows="2" style="width:100%">{{ note3e.traitement_fiscal }}</textarea>
+    </label>
+  </p>
+  <p>
+    <label>Montant de l'écart incorporé au capital :
+      <input type="text" size="12" name="cell_MONTANT_CAPITAL" value="{{ note3e.montant_capital|fmt }}">
+    </label>
+  </p>
+  <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+</form>
+{% endmacro %}
+
+{% macro note3_table(sheet, rows, cols, anchor=None) %}
+<form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  <input type="hidden" name="note3_sheet" value="{{ sheet }}">
+  <table>
+    <tr>
+      <th>Rubrique</th>
+      {% for col, label, manual in cols %}<th class="num">{{ label }}</th>{% endfor %}
+    </tr>
+    {% for r in rows %}
+    <tr class="{{ 'total' if r.total else '' }}">
+      <td>{{ r.label }}</td>
+      {% for col, label, manual in cols %}
+      <td class="num">
+        {% if (manual or col in (r.manual_cols if r.manual_cols is defined else [])) and not r.total %}
+        <input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|pct if '%' in label else r.vals[col]|fmt }}">
+        {% else %}
+        {{ r.vals[col]|pct if '%' in label else r.vals[col]|fmt }}
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+</form>
+{% endmacro %}
+
+{% macro note_comment_block(sheet) %}
+{% set fields = commentaire_map.get(sheet) %}
+{% if fields %}
+<div class="comment-block" style="margin-top:1em;border-top:1px dashed #ccc;padding-top:0.75em;">
+  <h4>Commentaire — {{ sheet }}</h4>
+  <form method="post" action="#{{ sheet|slug }}">
+    <input type="hidden" name="note_texte_sheet" value="{{ sheet }}">
+    {% for champ, label in fields %}
+    <p><label><strong>{{ label }}</strong> <em>(2000 caractères maximum)</em></label><br>
+    <textarea name="texte_{{ champ }}" rows="3" maxlength="2000" style="width:100%">{{ note_texte.get(sheet, {}).get(champ, '') }}</textarea></p>
+    {% endfor %}
+    <button class="btn" type="submit">Enregistrer le commentaire</button>
+  </form>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="card">
+  <h2>{{ client['raison_sociale'] }} — Exercice {{ exo['annee'] }}</h2>
+  <p>
+    <a href="/client/{{ client['id'] }}">← Historique des exercices</a>
+    {% if balN %}
+    <a href="#" class="btn no-print" style="margin-left:14px" onclick="window.print();return false;">Télécharger en PDF</a>
+    {% endif %}
+  </p>
+</div>
+
+<nav class="notenav">
+  <a href="#import-balance">Balance</a>
+  <a href="#import-tft">Détail TFT</a>
+  {% if balN %}
+  <a href="#sommaire">Sommaire</a>
+  <a href="#sommaire-impression">Sélection impression</a>
+  <a href="#garde">Garde</a>
+  <a href="#recevabilite">Recevabilité</a>
+  <a href="#note36-table-des-codes">Note 36</a>
+  <a href="#note36-suite-nomenclature">Note 36 suite</a>
+  <a href="#fiche-r1">Fiche R1</a>
+  <a href="#fiche-r2">Fiche R2</a>
+  <a href="#fiche-r3">Fiche R3</a>
+  <a href="#bilan-actif">Bilan actif</a>
+  <a href="#bilan-passif">Bilan passif</a>
+  <a href="#resultat">Résultat</a>
+  <a href="#tft">TFT</a>
+  <a href="#fiche-r4">Fiche R4</a>
+  <a href="#note-1">Note 1</a>
+  {% for sheet, title, champs in notes_texte_defs if sheet == "NOTE 2" %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  <a href="#note-3a">Note 3A</a>
+  <a href="#note-3b">Note 3B</a>
+  <a href="#note-3c">Note 3C</a>
+  <a href="#note-3c-bis">Note 3C bis</a>
+  <a href="#note-3d">Note 3D</a>
+  <a href="#note-3e">Note 3E</a>
+  {% for g in notes_lot_a %}<a href="#{{ g.sheet|slug }}">{{ g.sheet }}</a>{% endfor %}
+  {% for g in tables_lot_d if g.sheet == "NOTE 12" %}<a href="#{{ g.sheet|slug }}">{{ g.sheet }}</a>{% endfor %}
+  <a href="#note-13">Note 13</a>
+  {% for sheet, lines, cols, title in notes_lot_b_defs if sheet in ["NOTE 14", "NOTE 15A"] %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  {% for g in tables_lot_d if g.sheet == "NOTE 15B" %}<a href="#{{ g.sheet|slug }}">{{ g.sheet }}</a>{% endfor %}
+  {% for sheet, lines, cols, title in notes_lot_b_defs if sheet == "NOTE 16A" %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  {% for g in tables_lot_d if g.sheet in ["NOTE 16B", "NOTE 16B BIS"] %}<a href="#{{ g.sheet|slug }}">{{ g.sheet }}</a>{% endfor %}
+  <a href="#note-16c">Note 16C</a>
+  {% for sheet, lines, cols, title in notes_lot_b_defs if sheet in ["NOTE 17", "NOTE 18", "NOTE 19", "NOTE 20"] %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  <a href="#note-21">Note 21</a>
+  {% for sheet, lines, cols, title in notes_lot_c_defs if sheet != "NOTE 28" and sheet != "NOTE 29" %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  <a href="#note-27b">Note 27B</a>
+  {% for sheet, lines, cols, title in notes_lot_c_defs if sheet in ["NOTE 28", "NOTE 29"] %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  <a href="#note-30">Note 30</a>
+  <a href="#note-31">Note 31</a>
+  <a href="#note-32">Note 32</a>
+  <a href="#note-33">Note 33</a>
+  <a href="#note-34">Note 34</a>
+  {% for sheet, title, champs in notes_texte_defs if sheet == "NOTE 35" %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  {% for g in tables_lot_d if g.sheet == "NOTE 37" %}<a href="#{{ g.sheet|slug }}">{{ g.sheet }}</a>{% endfor %}
+  {% for sheet, title, champs in notes_texte_defs if sheet in ["NOTE 38", "NOTE 39"] %}<a href="#{{ sheet|slug }}">{{ sheet }}</a>{% endfor %}
+  <a href="#commentaires">Commentaires</a>
+  <a href="#garde-dgi-ins">GARDE (DGI-INS)</a>
+  <a href="#notes-dgi-ins">NOTES DGI - INS</a>
+  <a href="#comp-charges">COMP-CHARGES</a>
+  <a href="#comp-tva">COMP-TVA</a>
+  <a href="#comp-tva-2">COMP-TVA (2)</a>
+  <a href="#suppl1">SUPPL1</a>
+  <a href="#suppl2">SUPPL2</a>
+  <a href="#suppl3">SUPPL3</a>
+  <a href="#suppl4">SUPPL4</a>
+  <a href="#suppl5">SUPPL5</a>
+  <a href="#suppl6">SUPPL6</a>
+  <a href="#suppl7">SUPPL7</a>
+  {% endif %}
+</nav>
+
+<div class="card no-print" id="import-balance">
+  <h3>Import de la balance comptable</h3>
+  <p class="muted">Fichier CSV avec colonnes : compte;designation;be_debit;be_credit;mvt_debit;mvt_credit;bs_debit;bs_credit</p>
+  {% if upload_msg %}<div class="msg">{{ upload_msg }}</div>{% endif %}
+  <form method="post" enctype="multipart/form-data" class="grid2" action="#import-balance">
+    <div>
+      <label>Période</label>
+      <select name="periode">
+        <option value="N">N (exercice courant) — {{ balN|length }} ligne(s) déjà chargée(s)</option>
+        <option value="N1">N-1 (exercice précédent) — {{ balN1|length }} ligne(s) déjà chargée(s)</option>
+      </select>
+    </div>
+    <div>
+      <label>Fichier CSV</label>
+      <input type="file" name="fichier" accept=".csv" required>
+    </div>
+    <input type="hidden" name="type" value="balance">
+    <div><button class="btn" type="submit">Importer</button></div>
+  </form>
+</div>
+
+<div class="card no-print" id="import-tft">
+  <h3>Import du détail TFT (comptes à éclater)</h3>
+  <p class="muted">
+    Optionnel — uniquement si l'entreprise a des mouvements sur les comptes 106, 154, 1984, 4781, 4791,
+    4816, 4817, 4818 (réévaluations, provisions de démantèlement, écarts de conversion, retenues de
+    garantie...). Même format CSV que la balance : compte;designation;be_debit;be_credit;mvt_debit;mvt_credit;bs_debit;bs_credit.
+    {{ tftn|length }} ligne(s) N, {{ tftn1|length }} ligne(s) N-1 déjà chargée(s).
+  </p>
+  <form method="post" enctype="multipart/form-data" class="grid2" action="#import-tft">
+    <div>
+      <label>Période</label>
+      <select name="periode">
+        <option value="N">N (exercice courant)</option>
+        <option value="N1">N-1 (exercice précédent)</option>
+      </select>
+    </div>
+    <div>
+      <label>Fichier CSV</label>
+      <input type="file" name="fichier_tft" accept=".csv" required>
+    </div>
+    <input type="hidden" name="type" value="tft_detail">
+    <div><button class="btn" type="submit">Importer</button></div>
+  </form>
+</div>
+
+{% if balN %}
+<div class="card no-print" id="sommaire">
+  <h3>SOMMAIRE</h3>
+  <p class="muted">Feuille maîtresse du classeur : c'est ici que se saisit l'identification complète de l'entité.
+    GARDE et les FICHE R1/R2 ne font que reprendre ces valeurs en en-tête ou dans une cellule (formules
+    <code>=Sommaire!...</code>) — elles ne sont pas ressaisies sur ces feuilles.</p>
+  <form method="post" action="#sommaire">
+    <input type="hidden" name="note_texte_sheet" value="SOMMAIRE">
+    <h4>Identification complémentaire</h4>
+    <table>
+      <tr><td style="width:45%">Dénomination sociale de l'entreprise</td><td>{{ client['raison_sociale'] }}</td></tr>
+      <tr><td>Adresse</td><td>{{ client['adresse'] or '' }}</td></tr>
+      <tr><td>N° de compte contribuable (NCC)</td><td>{{ client['ncc'] or '' }}</td></tr>
+      <tr><td>N° de télédéclarant (NTD)</td><td>{{ client['ntd'] or '' }}</td></tr>
+    </table>
+    <p class="muted">(Dénomination, adresse, NCC, NTD sont gérés au niveau de la fiche client — cf. page Clients.)</p>
+    {% for champ, label in sommaire_champs %}
+    <p><label>{{ label }}</label>
+    <input type="text" name="texte_{{ champ }}" value="{{ sommaire_info.get(champ, '') }}"></p>
+    {% endfor %}
+    <button class="btn" type="submit">Enregistrer l'identification</button>
+  </form>
+
+  <h4>Dates de l'exercice</h4>
+  <p class="muted">Alimentent le champ d'en-tête "Exercice clos le :" / "Durée (en mois) :" reproduit sur chaque feuille.</p>
+  <form method="post" action="#sommaire">
+    <input type="hidden" name="exercice_dates_save" value="1">
+    <div class="grid2">
+      <p><label>Date de début de l'exercice</label>
+      <input type="date" name="exercice_date_debut" value="{{ exo['date_debut'] or '' }}"></p>
+      <p><label>Date de fin de l'exercice (clos le)</label>
+      <input type="date" name="exercice_date_fin" value="{{ exo['date_fin'] or '' }}"></p>
+    </div>
+    <button class="btn" type="submit">Enregistrer les dates</button>
+  </form>
+</div>
+
+<div class="card no-print" id="sommaire-impression">
+  <h3>SOMMAIRE — Sélection des feuilles à imprimer</h3>
+  <p class="muted">Cochez les feuilles à inclure dans l'export PDF. Une feuille décochée apparaît "N/A" (non applicable)
+    dans la FICHE R4 et n'est pas imprimée. Par défaut, toutes les feuilles sont cochées (applicables).</p>
+  <form method="post" action="#sommaire-impression">
+    <input type="hidden" name="sommaire_save" value="1">
+    <table>
+      <tr><th>Feuille</th><th class="num">Applicable (à imprimer)</th></tr>
+      {% for key, label, cid in sommaire_sheets %}
+      <tr>
+        <td>{{ label }}</td>
+        <td class="num"><input type="checkbox" style="width:auto" name="appl_{{ loop.index0 }}" {% if sommaire_sel.get(key, True) %}checked{% endif %}></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <button class="btn" type="submit">Enregistrer la sélection</button>
+  </form>
+</div>
+
+<div class="card" id="garde">
+  <h3 style="text-align:center">RÉPUBLIQUE DE CÔTE D'IVOIRE</h3>
+  <p class="muted" style="text-align:center;margin-top:-10px">MINISTÈRE DU BUDGET ET DU PORTEFEUILLE DE L'ÉTAT<br>DIRECTION GÉNÉRALE DES IMPÔTS</p>
+  <p style="text-align:center"><strong>CENTRE DE DÉPÔT DE</strong><br>{{ sommaire_info.get('centre_depot', '') }}</p>
+  <h3 style="text-align:center">ÉTATS FINANCIERS NORMALISÉS<br>SYSTÈME COMPTABLE OHADA (SYSCOHADA)</h3>
+  <p style="text-align:center"><strong>EXERCICE CLOS LE</strong> {{ exo['date_fin'] or '' }}</p>
+  <h4 style="text-align:center">DÉSIGNATION DE L'ENTITÉ</h4>
+  <table>
+    <tr><td style="width:45%">DÉNOMINATION SOCIALE :<br><span class="muted">(ou nom et prénoms de l'exploitant)</span></td>
+        <td>{{ client['raison_sociale'] }}</td></tr>
+    <tr><td>SIGLE USUEL :</td><td>{{ sommaire_info.get('sigle', '') }}</td></tr>
+    <tr><td>ADRESSE COMPLÈTE :</td><td>{{ client['adresse'] or (sommaire_info.get('commune','') + ' ' + sommaire_info.get('quartier','')) }}</td></tr>
+    <tr><td>N° COMPTE CONTRIBUABLE (NCC) :</td><td>{{ client['ncc'] or '' }}</td></tr>
+    <tr><td>N° DE TÉLÉDÉCLARANT (NTD) :</td><td>{{ client['ntd'] or '' }}</td></tr>
+  </table>
+  <p class="muted">Toutes les valeurs ci-dessus sont reprises automatiquement de la feuille SOMMAIRE — elles ne se
+    saisissent pas ici (cf. <a href="#sommaire">Sommaire</a>).</p>
+  <h4 style="text-align:center">SYSTÈME NORMAL</h4>
+  <form method="post" action="#garde">
+    <input type="hidden" name="note_texte_sheet" value="GARDE">
+    <div class="grid2">
+      <div>
+        <h4>Documents déposés</h4>
+        <table>
+          <tr><th>Document</th><th class="num">Déposé</th></tr>
+          {% for champ, label in garde_documents %}
+          <tr><td>{{ label }}</td><td class="num"><input type="text" size="6" name="texte_doc_{{ champ }}" value="{{ garde.get('doc_' + champ, 'X') }}"></td></tr>
+          {% endfor %}
+        </table>
+        <p><label>Nombre de pages déposées par exemplaire</label>
+        <input type="text" name="texte_nb_pages" value="{{ garde.get('nb_pages', '') }}"></p>
+        <p><label>Nombre d'exemplaires déposés</label>
+        <input type="text" name="texte_nb_exemplaires" value="{{ garde.get('nb_exemplaires', '') }}"></p>
+      </div>
+      <div>
+        <h4>Réservé à la Direction Générale des Impôts</h4>
+        <p><label>Date de dépôt</label>
+        <input type="text" name="texte_date_depot" value="{{ garde.get('date_depot', '') }}"></p>
+        <p><label>Nom de l'agent de la DGI ayant réceptionné le dépôt</label>
+        <input type="text" name="texte_nom_agent" value="{{ garde.get('nom_agent', '') }}"></p>
+        <p><label>Signature de l'agent et cachet du service</label>
+        <input type="text" name="texte_signature_agent" value="{{ garde.get('signature_agent', '') }}"></p>
+      </div>
+    </div>
+    <button class="btn" type="submit">Enregistrer</button>
+  </form>
+</div>
+
+<div class="card" id="recevabilite">
+  <h3>RECEVABILITE</h3>
+  <p>Conformément aux exigences de recevabilité des états financiers SYSCOHADA, l'entité doit s'assurer que :</p>
+  <ul>
+    <li>l'identification de l'entité (dénomination, NCC, NTD, adresse, forme juridique) est complète et exacte (cf. GARDE) ;</li>
+    <li>le Bilan, le Compte de résultat, le Tableau des flux de trésorerie et les Notes annexes (1 à 39) sont entièrement renseignés ;</li>
+    <li>les Fiches R1 à R4 sont complétées et cohérentes avec les données ci-dessus ;</li>
+    <li>les états complémentaires DGI - INS applicables au régime fiscal de l'entité sont joints ;</li>
+    <li>les états financiers sont signés par la personne habilitée (cf. FICHE R1) avant transmission.</li>
+  </ul>
+  <p class="muted">Le défaut de l'un de ces éléments peut entraîner l'irrecevabilité du dépôt auprès de l'administration fiscale.</p>
+</div>
+
+<div class="card" id="note36-table-des-codes">
+  <h3>NOTE 36 — Table des codes</h3>
+  <p class="muted">Tables de référence utilisées pour coder la forme juridique, le régime fiscal et le pays du siège social
+    sur la FICHE R2 (cf. classeur source pour la nomenclature complète).</p>
+  <h4>Forme juridique (extrait)</h4>
+  <table>
+    <tr><th>Code</th><th>Forme juridique</th></tr>
+    <tr><td>01</td><td>Société Anonyme (SA)</td></tr>
+    <tr><td>02</td><td>Société à Responsabilité Limitée (SARL)</td></tr>
+    <tr><td>03</td><td>Société par Actions Simplifiée (SAS)</td></tr>
+    <tr><td>04</td><td>Société en Nom Collectif (SNC)</td></tr>
+    <tr><td>05</td><td>Entreprise individuelle</td></tr>
+    <tr><td>06</td><td>Groupement d'Intérêt Économique (GIE)</td></tr>
+    <tr><td>07</td><td>Autre</td></tr>
+  </table>
+  <h4>Régime fiscal (extrait)</h4>
+  <table>
+    <tr><th>Code</th><th>Régime fiscal</th></tr>
+    <tr><td>1</td><td>Réel normal d'imposition</td></tr>
+    <tr><td>2</td><td>Réel simplifié d'imposition</td></tr>
+    <tr><td>3</td><td>Entreprenant / micro-entreprise</td></tr>
+  </table>
+  <h4>Pays du siège social (extrait)</h4>
+  <table>
+    <tr><th>Code</th><th>Pays</th></tr>
+    <tr><td>03</td><td>Côte d'Ivoire</td></tr>
+    <tr><td>01</td><td>Bénin</td></tr>
+    <tr><td>02</td><td>Burkina Faso</td></tr>
+    <tr><td>04</td><td>Mali</td></tr>
+    <tr><td>05</td><td>Sénégal</td></tr>
+    <tr><td>06</td><td>Togo</td></tr>
+  </table>
+</div>
+
+<div class="card" id="note36-suite-nomenclature">
+  <h3>NOTE 36 suite — Nomenclature</h3>
+  <p class="muted">Nomenclature des codes d'activité utilisés en FICHE R2, colonne "Code nomenclature d'activité"
+    (cf. classeur source pour la liste exhaustive des codes sectoriels).</p>
+  <table>
+    <tr><th>Code</th><th>Désignation de l'activité</th></tr>
+    <tr><td>I560100</td><td>Restauration</td></tr>
+    <tr><td>G471000</td><td>Commerce de détail</td></tr>
+    <tr><td>F410000</td><td>Construction de bâtiments</td></tr>
+    <tr><td>C100000</td><td>Industries alimentaires</td></tr>
+    <tr><td>H490000</td><td>Transports terrestres</td></tr>
+  </table>
+</div>
+
+<div class="card" id="fiche-r1">
+  <h3>FICHE R1 — Identification et renseignements divers 1</h3>
+  <table>
+    <tr><td>Dénomination sociale</td><td>{{ client['raison_sociale'] }}</td></tr>
+    <tr><td>Adresse</td><td>{{ client['adresse'] or '' }}</td></tr>
+    <tr><td>Sigle usuel</td><td>{{ sommaire_info.get('sigle', '') }}</td></tr>
+    <tr><td>NCC</td><td>{{ client['ncc'] or '' }}</td></tr>
+    <tr><td>NTD</td><td>{{ client['ntd'] or '' }}</td></tr>
+    <tr><td>Exercice clos le</td><td>{{ exo['date_fin'] or '' }}</td></tr>
+    <tr><td>Greffe / RCCM</td><td>{{ sommaire_info.get('greffe', '') }} {{ sommaire_info.get('rccm', '') }}</td></tr>
+    <tr><td>N° caisse sociale</td><td>{{ sommaire_info.get('caisse_sociale', '') }}</td></tr>
+    <tr><td>N° Code Importateur</td><td>{{ sommaire_info.get('code_importateur', '') }}</td></tr>
+    <tr><td>Code activité principale</td><td>{{ sommaire_info.get('code_activite', '') }}</td></tr>
+    <tr><td>Téléphone / E-mail</td><td>{{ sommaire_info.get('telephone', '') }} / {{ sommaire_info.get('email', '') }}</td></tr>
+    <tr><td>Boîte postale / Ville</td><td>{{ sommaire_info.get('boite_postale_code', '') }} / {{ sommaire_info.get('boite_postale_ville', '') }}</td></tr>
+  </table>
+  <p class="muted">Les valeurs ci-dessus sont reprises automatiquement de la feuille <a href="#sommaire">SOMMAIRE</a> —
+    elles ne se saisissent pas ici.</p>
+  <form method="post" action="#fiche-r1">
+    <input type="hidden" name="note_texte_sheet" value="FICHE R1">
+    <h4>Personne à contacter / Expert-comptable / Commissaire aux comptes / Signature</h4>
+    {% for champ, label in fiche_r1_champs %}
+    <p><label>{{ label }}</label>
+    <input type="text" name="texte_{{ champ }}" value="{{ fiche_r1.get(champ, '') }}"></p>
+    {% endfor %}
+    <h4>Domiciliations bancaires</h4>
+    <table>
+      <tr><th>Banque</th><th>N° de compte</th></tr>
+      {% for row in fiche_r1_banques %}
+      <tr>
+        <td><input type="text" name="texte_banque_nom_{{ row.idx }}" value="{{ row.banque }}"></td>
+        <td><input type="text" name="texte_banque_compte_{{ row.idx }}" value="{{ row.compte }}"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <button class="btn" type="submit" name="ajouter__N_BANQUE" value="1">+ Ajouter une ligne</button>
+    <button class="btn" type="submit">Enregistrer</button>
+  </form>
+</div>
+
+<div class="card" id="fiche-r2">
+  <h3>FICHE R2 — Identification et renseignements divers 2</h3>
+  <table>
+    <tr><td>Forme juridique (Note 36)</td><td>{{ sommaire_info.get('forme_juridique', '') }}</td></tr>
+    <tr><td>Régime fiscal (Note 36)</td><td>{{ sommaire_info.get('regime_fiscal', '') }}</td></tr>
+    <tr><td>Pays du siège social (Note 36)</td><td>{{ sommaire_info.get('pays_siege', '') }}</td></tr>
+  </table>
+  <form method="post" action="#fiche-r2">
+    <input type="hidden" name="note_texte_sheet" value="FICHE R2">
+    <p><label>Nombre d'établissements dans le pays</label>
+    <input type="text" name="texte_nb_etabl_pays" value="{{ fiche_r2.get('nb_etabl_pays', '') }}"></p>
+    <p><label>Nombre d'établissements hors du pays (comptabilité distincte)</label>
+    <input type="text" name="texte_nb_etabl_hors_pays" value="{{ fiche_r2.get('nb_etabl_hors_pays', '') }}"></p>
+    <h4>Activité de l'entité (désignation par ordre décroissant de CA HT ou VA, et code nomenclature — Note 36 suite)</h4>
+    <table>
+      <tr><th>Désignation de l'activité</th><th>CA HT / VA</th><th>Code nomenclature</th></tr>
+      {% for i in fiche_r2_activites_rows %}
+      <tr>
+        <td><input type="text" name="texte_activite_{{ i }}_designation" value="{{ fiche_r2.get('activite_%d_designation' % i, '') }}" placeholder="{{ 'Divers' if i == (fiche_r2_activites_rows|last) else '' }}"></td>
+        <td><input type="text" size="12" name="texte_activite_{{ i }}_montant" value="{{ fiche_r2.get('activite_%d_montant' % i, '') }}"></td>
+        <td><input type="text" size="12" name="texte_activite_{{ i }}_code" value="{{ fiche_r2.get('activite_%d_code' % i, '') }}"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <button class="btn" type="submit">Enregistrer</button>
+  </form>
+</div>
+
+<div class="card" id="fiche-r3">
+  <h3>FICHE R3 — Identification et renseignements divers 3</h3>
+  <form method="post" action="#fiche-r3">
+    <input type="hidden" name="note_texte_sheet" value="FICHE R3">
+    <h4>Dirigeants (PDG, DG, Administrateur Général, Gérant, Autres)</h4>
+    <table>
+      <tr><th>Nom et prénoms</th><th>Nationalité</th><th>Qualité</th><th>N° identification fiscale</th><th>Adresse</th></tr>
+      {% for i in fiche_r3_dirigeants_rows %}
+      <tr>
+        <td><input type="text" name="texte_dirigeant_{{ i }}_nom" value="{{ fiche_r3.get('dirigeant_%d_nom' % i, '') }}"></td>
+        <td><input type="text" name="texte_dirigeant_{{ i }}_nationalite" value="{{ fiche_r3.get('dirigeant_%d_nationalite' % i, '') }}"></td>
+        <td><input type="text" name="texte_dirigeant_{{ i }}_qualite" value="{{ fiche_r3.get('dirigeant_%d_qualite' % i, '') }}"></td>
+        <td><input type="text" name="texte_dirigeant_{{ i }}_nif" value="{{ fiche_r3.get('dirigeant_%d_nif' % i, '') }}"></td>
+        <td><input type="text" name="texte_dirigeant_{{ i }}_adresse" value="{{ fiche_r3.get('dirigeant_%d_adresse' % i, '') }}"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <h4>Membres du Conseil d'Administration</h4>
+    <table>
+      <tr><th>Nom et prénoms</th><th>Structure représentée</th><th>Qualité</th><th>Adresse</th></tr>
+      {% for i in fiche_r3_admin_rows %}
+      <tr>
+        <td><input type="text" name="texte_admin_{{ i }}_nom" value="{{ fiche_r3.get('admin_%d_nom' % i, '') }}"></td>
+        <td><input type="text" name="texte_admin_{{ i }}_structure" value="{{ fiche_r3.get('admin_%d_structure' % i, '') }}"></td>
+        <td><input type="text" name="texte_admin_{{ i }}_qualite" value="{{ fiche_r3.get('admin_%d_qualite' % i, '') }}"></td>
+        <td><input type="text" name="texte_admin_{{ i }}_adresse" value="{{ fiche_r3.get('admin_%d_adresse' % i, '') }}"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <button class="btn" type="submit">Enregistrer</button>
+  </form>
+</div>
+
+<div class="card" id="bilan-actif">
+  <h3>BILAN — ACTIF</h3>
+  <table>
+    <tr><th>REF</th><th>ACTIF</th><th>NOTE</th><th class="num">BRUT</th><th class="num">AMORT. ET DEPREC.</th><th class="num">NET N</th><th class="num">NET N-1</th></tr>
+    {% for l in bilan_actif %}
+    <tr class="{{ 'total' if l.total else '' }}">
+      <td>{{ l.ref }}</td>
+      <td>{{ l.label }}</td>
+      <td>{{ l.note }}</td>
+      <td class="num">{{ l.brut|fmt }}</td>
+      <td class="num">{{ l.amort|fmt }}</td>
+      <td class="num">{{ l.net|fmt }}</td>
+      <td class="num">{{ l.net1|fmt }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" id="bilan-passif">
+  <h3>BILAN — PASSIF</h3>
+  <table>
+    <tr><th>REF</th><th>PASSIF</th><th>NOTE</th><th class="num">NET N</th><th class="num">NET N-1</th></tr>
+    {% for l in bilan_passif %}
+    <tr class="{{ 'total' if l.total else '' }}">
+      <td>{{ l.ref }}</td>
+      <td>{{ l.label }}</td>
+      <td>{{ l.note }}</td>
+      <td class="num">{{ l.net|fmt }}</td>
+      <td class="num">{{ l.net1|fmt }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" id="resultat">
+  <h3>COMPTE DE RESULTAT</h3>
+  <table>
+    <tr><th>REF</th><th>LIBELLES</th><th>NOTE</th><th class="num">EXERCICE N</th><th class="num">EXERCICE N-1</th></tr>
+    {% for l in resultat_lines %}
+    <tr class="{{ 'total' if l.total else '' }}">
+      <td>{{ l.ref }}</td>
+      <td>{{ l.label }}</td>
+      <td>{{ l.note }}</td>
+      <td class="num">{{ l.n|fmt }}</td>
+      <td class="num">{{ l.n1|fmt }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+<div class="card" id="tft">
+  <h3>TABLEAU DES FLUX DE TRESORERIE (TFT)</h3>
+  <table>
+    <tr><th>Rubrique</th><th class="num">N</th><th class="num">N-1</th></tr>
+    {% for l in tft_lines %}
+    <tr class="{{ 'total' if l.label.startswith('Trésorerie nette') or '(' in l.label and l.label[-1] == ')' else '' }}">
+      <td>{{ l.label }}</td><td class="num">{{ l.n|fmt }}</td><td class="num">{{ l.n1|fmt }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" id="fiche-r4">
+  <h3>FICHE R4 — Récapitulatif des notes annexes</h3>
+  <p class="muted">Colonnes "A" (Applicable) / "N/A" (Non applicable) reprises automatiquement de la sélection
+    faite sur la page <a href="#sommaire-impression">SOMMAIRE</a> — décochez une feuille sur le Sommaire pour la faire
+    apparaître en "N/A" ici et l'exclure de l'export PDF.</p>
+  <table>
+    <tr><th>Feuille</th><th class="num">A</th><th class="num">N/A</th></tr>
+    {% for r in fiche_r4_rows %}
+    <tr>
+      <td>{{ r.label }}</td>
+      <td class="num">{{ 'x' if r.applicable else '' }}</td>
+      <td class="num">{{ '' if r.applicable else 'x' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" id="note-1">
+  <h3>NOTE 1 — DETTES GARANTIES PAR DES SURETES REELLES ET LES ENGAGEMENTS FINANCIERS</h3>
+  <form method="post" action="#note-1">
+    <input type="hidden" name="note3_sheet" value="NOTE 1">
+    <table>
+      <tr><th>Libellés</th><th class="num">Note</th><th class="num">Montant brut</th></tr>
+      {% for r in note1.table1 %}
+      <tr class="{{ 'total' if r.kind == 'total' else '' }}">
+        <td>{{ r.label }}</td>
+        <td class="num">{{ r.note_ref if r.note_ref else '' }}</td>
+        <td class="num">
+          {% if r.kind == 'manual' %}
+          <input type="text" size="10" name="cell_F{{ r.row }}" value="{{ r.F|fmt }}">
+          {% else %}
+          {{ r.F|fmt if r.F is not none else '' }}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <h4>Engagements financiers</h4>
+    <table>
+      <tr>
+        <th>Libellés</th>
+        {% for col, label in note1.table2_cols %}<th class="num">{{ label }}</th>{% endfor %}
+      </tr>
+      {% for r in note1.table2 %}
+      <tr>
+        <td>{{ r.label }}</td>
+        {% for col, label in note1.table2_cols %}
+        <td class="num"><input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|fmt }}"></td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td>TOTAL</td>
+        {% for col, label in note1.table2_cols %}<td class="num">{{ note1.totals2[col]|fmt }}</td>{% endfor %}
+      </tr>
+    </table>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+  {{ note_comment_block("NOTE 1") }}
+</div>
+
+{% for sheet, title, champs in notes_texte_defs if sheet == "NOTE 2" %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  <form method="post" action="#{{ sheet|slug }}">
+    <input type="hidden" name="note_texte_sheet" value="{{ sheet }}">
+    {% for champ, label in champs %}
+    <p><label><strong>{{ label }}</strong></label><br>
+    <textarea name="texte_{{ champ }}" rows="3" style="width:100%">{{ note_texte.get(sheet, {}).get(champ, '') }}</textarea></p>
+    {% endfor %}
+    <button class="btn" type="submit">Enregistrer les commentaires</button>
+  </form>
+</div>
+{% endfor %}
+
+<div class="card landscape" id="note-3a">
+  <h3>NOTE 3A — IMMOBILISATIONS (valeurs brutes)</h3>
+  {{ note3_table("NOTE 3A", note3a, note3a_cols, anchor="note-3a") }}
+  {{ note_comment_block("NOTE 3A") }}
+</div>
+
+<div class="card landscape" id="note-3b">
+  <h3>NOTE 3B — IMMOBILISATIONS FINANCIERES</h3>
+  {{ note3b_table(note3b, note3b_cols, anchor="note-3b") }}
+  {{ note_comment_block("NOTE 3B") }}
+</div>
+
+<div class="card landscape" id="note-3c">
+  <h3>NOTE 3C — AMORTISSEMENTS</h3>
+  {{ note3_table("NOTE 3C", note3c, note3c_cols, anchor="note-3c") }}
+  {{ note_comment_block("NOTE 3C") }}
+</div>
+
+<div class="card landscape" id="note-3c-bis">
+  <h3>NOTE 3C BIS — AMORTISSEMENTS (détail complémentaire)</h3>
+  {{ note3_table("NOTE 3C BIS", note3cbis, note3cbis_cols, anchor="note-3c-bis") }}
+  {{ note_comment_block("NOTE 3C BIS") }}
+</div>
+
+<div class="card landscape" id="note-3d">
+  <h3>NOTE 3D — PLUS OU MOINS-VALUES DE CESSION D'IMMOBILISATIONS</h3>
+  {{ note3_table("NOTE 3D", note3d, note3d_cols, anchor="note-3d") }}
+  {{ note_comment_block("NOTE 3D") }}
+</div>
+
+<div class="card" id="note-3e">
+  <h3>NOTE 3E — INFORMATIONS SUR LES REEVALUATIONS EFFECTUEES PAR L'ENTITE</h3>
+  {{ note3e_table(note3e, anchor="note-3e") }}
+  {{ note_comment_block("NOTE 3E") }}
+</div>
+
+{% for g in notes_lot_a %}
+<div class="card{% if g.sheet|landscape %} landscape{% endif %}" id="{{ g.sheet|slug }}">
+  {% if g.tables|length > 1 %}<h2>{{ g.sheet }}</h2>{% endif %}
+  {% for t in g.tables %}
+  <h3>{{ t.title }}</h3>
+  {{ note3_table(g.sheet, t.rows, t.cols, anchor=g.sheet|slug) }}
+  {% endfor %}
+  {{ note_comment_block(g.sheet) }}
+</div>
+{% endfor %}
+
+{% for g in tables_lot_d if g.sheet == "NOTE 12" %}
+<div class="card{% if g.sheet|landscape %} landscape{% endif %}" id="{{ g.sheet|slug }}">
+  <h2>{{ g.sheet }}</h2>
+  {% for t in g.tables %}
+  <h3>{{ t.title }}</h3>
+  {{ note3_table(g.sheet, t.rows, t.cols, anchor=g.sheet|slug) }}
+  {% endfor %}
+  {{ note_comment_block(g.sheet) }}
+</div>
+{% endfor %}
+
+<div class="card landscape" id="note-13">
+  <h2>NOTE 13 — Capital</h2>
+  {{ note13_table(note13, anchor="note-13") }}
+  {{ note_comment_block("NOTE 13") }}
+</div>
+
+{% for sheet, lines, cols, title in notes_lot_b_defs if sheet in ["NOTE 14", "NOTE 15A"] %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  {{ note3_table(sheet, notes_lot_b[sheet], cols, anchor=sheet|slug) }}
+  {{ note_comment_block(sheet) }}
+</div>
+{% endfor %}
+
+{% for g in tables_lot_d if g.sheet == "NOTE 15B" %}
+<div class="card{% if g.sheet|landscape %} landscape{% endif %}" id="{{ g.sheet|slug }}">
+  <h2>{{ g.sheet }}</h2>
+  {% for t in g.tables %}
+  <h3>{{ t.title }}</h3>
+  {{ note3_table(g.sheet, t.rows, t.cols, anchor=g.sheet|slug) }}
+  {% endfor %}
+  {{ note_comment_block(g.sheet) }}
+</div>
+{% endfor %}
+
+{% for sheet, lines, cols, title in notes_lot_b_defs if sheet == "NOTE 16A" %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  {{ note3_table(sheet, notes_lot_b[sheet], cols, anchor=sheet|slug) }}
+  {{ note_comment_block(sheet) }}
+</div>
+{% endfor %}
+
+{% for g in tables_lot_d if g.sheet in ["NOTE 16B", "NOTE 16B BIS"] %}
+<div class="card{% if g.sheet|landscape %} landscape{% endif %}" id="{{ g.sheet|slug }}">
+  <h2>{{ g.sheet }}</h2>
+  {% for t in g.tables %}
+  <h3>{{ t.title }}</h3>
+  {{ note3_table(g.sheet, t.rows, t.cols, anchor=g.sheet|slug) }}
+  {% endfor %}
+  {{ note_comment_block(g.sheet) }}
+</div>
+{% endfor %}
+
+<div class="card" id="note-16c">
+  <h3>NOTE 16C — ACTIFS ET PASSIFS EVENTUELS</h3>
+  <h4>Actif éventuel</h4>
+  {{ dyn_table("NOTE 16C", "_N_ACTIF", "ACTIF", "actif_desig", note16c.actif_rows, note16c.cols, note16c.actif_totals, note16c.n_actif, anchor="note-16c", nv_vals=none) }}
+  <h4>Passif éventuel</h4>
+  {{ dyn_table("NOTE 16C", "_N_PASSIF", "PASSIF", "passif_desig", note16c.passif_rows, note16c.cols, note16c.passif_totals, note16c.n_passif, anchor="note-16c", nv_vals=none) }}
+  {{ note_comment_block("NOTE 16C") }}
+</div>
+
+{% for sheet, lines, cols, title in notes_lot_b_defs if sheet in ["NOTE 17", "NOTE 18", "NOTE 19", "NOTE 20"] %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  {{ note3_table(sheet, notes_lot_b[sheet], cols, anchor=sheet|slug) }}
+  {{ note_comment_block(sheet) }}
+</div>
+{% endfor %}
+
+<div class="card" id="note-21">
+  <h3>NOTE 21 — CHIFFRE D'AFFAIRES ET AUTRES PRODUITS</h3>
+  {{ note21_table(note21, anchor="note-21") }}
+  {{ note_comment_block("NOTE 21") }}
+</div>
+
+{% for sheet, lines, cols, title in notes_lot_c_defs if sheet != "NOTE 28" and sheet != "NOTE 29" %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  {{ note3_table(sheet, notes_lot_c[sheet], cols, anchor=sheet|slug) }}
+  {{ note_comment_block(sheet) }}
+</div>
+{% endfor %}
+
+<div class="card landscape" id="note-27b">
+  <h2>NOTE 27B — Effectifs, masse salariale et personnel extérieur</h2>
+  {{ note3_table("NOTE 27B", note27b_rows, note27b_cols, anchor="note-27b") }}
+  <form method="post" action="#note-27b">
+    <input type="hidden" name="note3_sheet" value="NOTE 27B">
+    <table>
+      <tr>
+        <td>{{ note27b_side.b_label }}</td>
+        <td class="num"><input type="text" size="10" name="cell_R22" value="{{ note27b_side.b|fmt }}"></td>
+      </tr>
+      <tr>
+        <td>{{ note27b_side.c_label }}</td>
+        <td class="num"><input type="text" size="10" name="cell_R24" value="{{ note27b_side.c|fmt }}"></td>
+      </tr>
+      <tr class="total">
+        <td>{{ note27b_side.total_label }}</td>
+        <td class="num">{{ note27b_side.total|fmt }}</td>
+      </tr>
+    </table>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+  {{ note_comment_block("NOTE 27B") }}
+</div>
+
+{% for sheet, lines, cols, title in notes_lot_c_defs if sheet in ["NOTE 28", "NOTE 29"] %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  {{ note3_table(sheet, notes_lot_c[sheet], cols, anchor=sheet|slug) }}
+  {{ note_comment_block(sheet) }}
+</div>
+{% endfor %}
+
+<div class="card" id="note-30">
+  <h2>NOTE 30 — Autres charges et produits HAO</h2>
+  <h3>Charges HAO</h3>
+  {{ note30_group("NOTE 30", note30.charges, "_N_CHARGES", "CH", "desig_ch", anchor="note-30") }}
+  <h3>Produits HAO</h3>
+  {{ note30_group("NOTE 30", note30.produits, "_N_PRODUITS", "PR", "desig_pr", anchor="note-30") }}
+  {{ note_comment_block("NOTE 30") }}
+</div>
+
+<div class="card landscape" id="note-31">
+  <h3>NOTE 31 — RÉPARTITION DU RÉSULTAT ET AUTRES ÉLÉMENTS CARACTÉRISTIQUES DES CINQ DERNIERS EXERCICES</h3>
+  <form method="post" action="#note-31">
+    <input type="hidden" name="note3_sheet" value="NOTE 31">
+    <table>
+      <tr>
+        <th>Rubrique</th>
+        {% for col in note31_cols %}<th class="num">{{ note31_col_labels[col] }}</th>{% endfor %}
+      </tr>
+      {% for r in note31 %}
+      <tr class="{{ 'total' if r.total else '' }}">
+        <td>{{ r.label }}</td>
+        {% for col in note31_cols %}
+        <td class="num">
+          {% if col in r.manual_cols and not r.total %}
+          <input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|fmt }}">
+          {% else %}
+          {{ r.vals[col]|fmt }}
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+</div>
+
+<div class="card landscape" id="note-32">
+  <h3>NOTE 32 — PRODUCTION DE L'EXERCICE</h3>
+  {{ dyn_table("NOTE 32", "_N_DETAIL", "D", "desig", note32.rows, note32.cols, note32.totals, note32.n, anchor="note-32", nv_vals=note32.nv_vals, nv_label="NON VENTILE") }}
+</div>
+
+<div class="card landscape" id="note-33">
+  <h3>NOTE 33 — ACHATS DESTINES A LA PRODUCTION</h3>
+  {{ dyn_table("NOTE 33", "_N_DETAIL", "D", "desig", note33.rows, note33.cols, note33.totals, note33.n, anchor="note-33", nv_vals=note33.nv_vals, nv_label="NON VENTILE") }}
+</div>
+
+<div class="card" id="note-34">
+  <h3>NOTE 34 — FICHE DE SYNTHÈSE DES PRINCIPAUX INDICATEURS FINANCIERS</h3>
+  <p class="muted">Note entièrement calculée (références croisées BILAN / RESULTAT / TFT) — aucune saisie manuelle.</p>
+  <table>
+    <tr><th>Rubrique</th><th class="num">Année N</th><th class="num">Année N-1</th><th class="num">Variation</th></tr>
+    {% for r in note34 %}
+    <tr class="{{ 'total' if r.total else '' }}">
+      <td>{{ r.label }}</td>
+      <td class="num">{{ r.F|fmt }}</td>
+      <td class="num">{{ r.G|fmt }}</td>
+      <td class="num">{{ r.H|pct if r.kind == 'pct' else r.H|fmt if r.kind != 'points' else r.H }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+{% for sheet, title, champs in notes_texte_defs if sheet == "NOTE 35" %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  <form method="post" action="#{{ sheet|slug }}">
+    <input type="hidden" name="note_texte_sheet" value="{{ sheet }}">
+    {% for champ, label in champs %}
+    <p><label><strong>{{ label }}</strong></label><br>
+    <textarea name="texte_{{ champ }}" rows="3" style="width:100%">{{ note_texte.get(sheet, {}).get(champ, '') }}</textarea></p>
+    {% endfor %}
+    <button class="btn" type="submit">Enregistrer les commentaires</button>
+  </form>
+</div>
+{% endfor %}
+
+{% for g in tables_lot_d if g.sheet == "NOTE 37" %}
+<div class="card{% if g.sheet|landscape %} landscape{% endif %}" id="{{ g.sheet|slug }}">
+  <h2>{{ g.sheet }}</h2>
+  {% for t in g.tables %}
+  <h3>{{ t.title }}</h3>
+  {{ note3_table(g.sheet, t.rows, t.cols, anchor=g.sheet|slug) }}
+  {% endfor %}
+</div>
+{% endfor %}
+
+{% for sheet, title, champs in notes_texte_defs if sheet in ["NOTE 38", "NOTE 39"] %}
+<div class="card{% if sheet|landscape %} landscape{% endif %}" id="{{ sheet|slug }}">
+  <h3>{{ title }}</h3>
+  <form method="post" action="#{{ sheet|slug }}">
+    <input type="hidden" name="note_texte_sheet" value="{{ sheet }}">
+    {% for champ, label in champs %}
+    <p><label><strong>{{ label }}</strong></label><br>
+    <textarea name="texte_{{ champ }}" rows="3" style="width:100%">{{ note_texte.get(sheet, {}).get(champ, '') }}</textarea></p>
+    {% endfor %}
+    <button class="btn" type="submit">Enregistrer les commentaires</button>
+  </form>
+</div>
+{% endfor %}
+
+<div class="card" id="commentaires">
+  <h2>COMMENTAIRES</h2>
+  <p class="muted">Reprend, dans l'ordre du classeur, l'ensemble des zones de commentaire libre (2000 caractères maximum) de la feuille COMMENTAIRE. Chaque champ est aussi accessible directement en bas de la note correspondante.</p>
+  {% for note_key, group_label, fields in commentaire_defs %}
+  <div style="margin-top:1.25em;padding-top:0.75em;border-top:1px solid #ddd;">
+    <h4>{{ note_key }}{% if group_label %} — {{ group_label }}{% endif %}</h4>
+    <form method="post" action="#commentaires">
+      <input type="hidden" name="note_texte_sheet" value="{{ note_key }}">
+      {% for champ, label in fields %}
+      <p><label>{{ label }}</label><br>
+      <textarea name="texte_{{ champ }}" rows="3" maxlength="2000" style="width:100%">{{ note_texte.get(note_key, {}).get(champ, '') }}</textarea></p>
+      {% endfor %}
+      <button class="btn" type="submit">Enregistrer</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" id="garde-dgi-ins">
+  <h2>ÉTATS SUPPLÉMENTAIRES</h2>
+  <p style="text-align:center; font-weight:bold; margin-top:2em">DIRECTION GÉNÉRALE DES IMPÔTS ET INSTITUT NATIONAL DE LA STATISTIQUE</p>
+  <p style="text-align:center; margin-top:1em">{{ client.raison_sociale }} — Exercice {{ exo.annee }}</p>
+</div>
+
+<div class="card" id="notes-dgi-ins">
+  <h2>FICHE RÉCAPITULATIVE DES ÉTATS SUPPLÉMENTAIRES DGI &amp; INS PRÉSENTÉS</h2>
+  <p><em>Les pages ayant au moins un tableau renseigné sont considérées comme applicables (A), les autres comme non applicables (N/A). Calculé automatiquement.</em></p>
+  <table>
+    <tr><th>Notes</th><th>Intitulés</th><th class="num">A</th><th class="num">N/A</th></tr>
+    {% for r in notes_dgi_ins_recap.rows %}
+    <tr{% if r.hors_perimetre %} style="color:#999"{% endif %}>
+      <td>{{ r.code }}</td>
+      <td>{{ r.label }}{% if r.hors_perimetre %} <em>(hors périmètre de cette application)</em>{% endif %}</td>
+      <td class="num">{% if r.applicable == true %}x{% endif %}</td>
+      <td class="num">{% if r.applicable == false or r.hors_perimetre %}x{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" id="comp-charges">
+  <h2>ÉTAT COMPLÉMENTAIRE N°1 — DÉTAIL DES CHARGES (DGI-INS)</h2>
+  <p><em>Calculée automatiquement à partir de la balance (aucune saisie manuelle). L'écart final doit être nul si la balance est complète.</em></p>
+  <table>
+    <tr><th>Compte</th><th>Désignation</th><th class="num">Exercice N</th><th class="num">Exercice N-1</th><th class="num">Variation en valeur</th><th class="num">Variation en %</th></tr>
+    {% for r in comp_charges.rows %}
+    <tr{% if r.is_total %} class="total"{% endif %}>
+      <td>{{ r.code }}</td>
+      <td>{{ r.label }}</td>
+      <td class="num">{{ r.g|fmt }}</td>
+      <td class="num">{{ r.h|fmt }}</td>
+      <td class="num">{{ r.var_valeur|fmt }}</td>
+      <td class="num">{{ r.var_pct|pct if r.var_pct != '' else '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+{{ dgi_simple_table("COMP-TVA", "comp-tva", "ÉTAT COMPLÉMENTAIRE N°2 — ÉTAT TVA (DGI-INS)", comp_tva) }}
+{{ dgi_simple_table("COMP-TVA (2)", "comp-tva-2", "ÉTAT COMPLÉMENTAIRE N°3 — ÉTAT TVA SUPPORTÉE NON DÉDUCTIBLE (DGI-INS)", comp_tva2) }}
+<div class="card" id="suppl1">
+  <h2>ÉTAT SUPPLÉMENTAIRE N°1 — ÉLÉMENTS STATISTIQUES UEMOA (DGI-INS)</h2>
+
+  <h4>Complément note annexe</h4>
+  <form method="post" action="#suppl1">
+    <input type="hidden" name="note3_sheet" value="SUPPL1">
+    <input type="hidden" name="note_texte_sheet" value="SUPPL1">
+    <input type="hidden" name="cell__N_ANNEXE" value="{{ suppl1.annexe_n }}">
+    <table>
+      <tr><th>Désignation</th>{% for col, label, manual in suppl1.annexe_cols %}<th class="num">{{ label }}</th>{% endfor %}</tr>
+      {% for r in suppl1.annexe_rows %}
+      <tr>
+        <td><input type="text" name="texte_desig_ax_{{ r.idx }}" value="{{ r.designation }}"></td>
+        {% for col, label, manual in suppl1.annexe_cols %}
+        <td class="num"><input type="text" size="10" name="cell_AX_{{ col }}_{{ r.idx }}" value="{{ r.vals[col]|fmt }}"></td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td>TOTAL</td>
+        {% for col, label, manual in suppl1.annexe_cols %}<td class="num">{{ suppl1.annexe_totals[col]|fmt }}</td>{% endfor %}
+      </tr>
+    </table>
+    <button class="btn" type="submit" name="ajouter__N_ANNEXE" value="1">+ Ajouter une ligne</button>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+
+  <h4 style="margin-top:1.5em">Complément note 32 — détail de produits (vente UEMOA / hors UEMOA)</h4>
+  <form method="post" action="#suppl1">
+    <input type="hidden" name="note3_sheet" value="SUPPL1">
+    <input type="hidden" name="note_texte_sheet" value="SUPPL1">
+    <input type="hidden" name="cell__N_PRODUIT" value="{{ suppl1.produit_n }}">
+    <table>
+      <tr><th>Désignation du produit</th><th>Unité</th>{% for col, label, manual in suppl1.produit_cols %}<th class="num">{{ label }}</th>{% endfor %}</tr>
+      {% for r in suppl1.produit_rows %}
+      <tr>
+        <td><input type="text" name="texte_desig_pr_{{ r.idx }}" value="{{ r.designation }}"></td>
+        <td><input type="text" size="8" name="texte_unite_pr_{{ r.idx }}" value="{{ r.unite }}"></td>
+        {% for col, label, manual in suppl1.produit_cols %}
+        <td class="num"><input type="text" size="10" name="cell_PR_{{ col }}_{{ r.idx }}" value="{{ r.vals[col]|fmt }}"></td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      <tr>
+        <td>NON VENTILÉ</td><td></td>
+        {% for col, label, manual in suppl1.produit_cols %}
+        <td class="num"><input type="text" size="10" name="cell_NV_PR_{{ col }}" value="{{ suppl1.produit_nv[col]|fmt }}"></td>
+        {% endfor %}
+      </tr>
+      <tr class="total">
+        <td>TOTAL</td><td></td>
+        {% for col, label, manual in suppl1.produit_cols %}<td class="num">{{ suppl1.produit_totals[col]|fmt }}</td>{% endfor %}
+      </tr>
+    </table>
+    <button class="btn" type="submit" name="ajouter__N_PRODUIT" value="1">+ Ajouter un produit</button>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+
+  <h4 style="margin-top:1.5em">Complément note 27B — personnel propre dans l'UEMOA</h4>
+  <form method="post" action="#suppl1">
+    <input type="hidden" name="note3_sheet" value="SUPPL1">
+    <table>
+      <tr><th>Catégorie</th>{% for col, label in suppl1.n27b_cols %}<th class="num">{{ label }}</th>{% endfor %}</tr>
+      {% for r in suppl1.n27b_rows %}
+      <tr>
+        <td>{{ r.label }}</td>
+        {% for col, label in suppl1.n27b_cols %}
+        <td class="num"><input type="text" size="8" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|fmt }}"></td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td>TOTAL</td>
+        {% for col, label in suppl1.n27b_cols %}<td class="num">{{ suppl1.n27b_totals[col]|fmt }}</td>{% endfor %}
+      </tr>
+      <tr>
+        <td>Permanents</td>
+        {% for col, label in suppl1.n27b_cols %}<td class="num"><input type="text" size="8" name="cell_{{ col }}75" value="{{ suppl1.n27b_permanents[col]|fmt }}"></td>{% endfor %}
+      </tr>
+      <tr>
+        <td>Saisonniers</td>
+        {% for col, label in suppl1.n27b_cols %}<td class="num">{{ suppl1.n27b_saisonniers[col]|fmt }}</td>{% endfor %}
+      </tr>
+    </table>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+
+  <h4 style="margin-top:1.5em">Complément note 33 — achats destinés à la production dans l'UEMOA</h4>
+  <form method="post" action="#suppl1">
+    <input type="hidden" name="note3_sheet" value="SUPPL1">
+    <table>
+      <tr><th>Désignation</th><th class="num">Exercice N</th></tr>
+      {% for r in suppl1.n33_rows %}
+      <tr{% if r.kind == 'total' %} class="total"{% endif %}>
+        <td>{{ r.label }}</td>
+        <td class="num">
+          {% if r.kind == 'total' %}{{ r.value|fmt }}
+          {% else %}<input type="text" size="10" name="cell_M{{ r.row }}" value="{{ r.value|fmt }}">{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+</div>
+
+<div class="card landscape" id="suppl2">
+  <h2>ÉTAT SUPPLÉMENTAIRE N°2 — RÉPARTITION DU RÉSULTAT FISCAL DES SOCIÉTÉS DE PERSONNES (DGI-INS)</h2>
+  <form method="post" action="#suppl2">
+    <input type="hidden" name="note3_sheet" value="SUPPL2">
+    <input type="hidden" name="note_texte_sheet" value="SUPPL2">
+    <input type="hidden" name="cell__N_DETAIL" value="{{ suppl2.n }}">
+    <table>
+      <tr>
+        <th>Nom et prénoms des associés</th><th>Adresse du domicile fiscal</th><th>N° de compte contribuable</th>
+        {% for col, label, manual in suppl2.cols %}<th class="num">{{ label }}</th>{% endfor %}
+        <th>N° note / réf. autres parties états financiers</th>
+      </tr>
+      {% for r in suppl2.rows %}
+      <tr>
+        <td><input type="text" name="texte_desig_{{ r.idx }}" value="{{ r.designation }}"></td>
+        <td><input type="text" name="texte_adresse_{{ r.idx }}" value="{{ r.adresse }}"></td>
+        <td><input type="text" name="texte_ncc_{{ r.idx }}" value="{{ r.ncc }}"></td>
+        {% for col, label, manual in suppl2.cols %}
+        <td class="num"><input type="text" size="10" name="cell_D_{{ col }}_{{ r.idx }}" value="{{ r.vals[col]|fmt }}"></td>
+        {% endfor %}
+        <td><input type="text" name="texte_ref_{{ r.idx }}" value="{{ r.ref }}"></td>
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td colspan="3">TOTAL</td>
+        {% for col, label, manual in suppl2.cols %}<td class="num">{{ suppl2.totals[col]|fmt }}</td>{% endfor %}
+        <td></td>
+      </tr>
+    </table>
+    <button class="btn" type="submit" name="ajouter__N_DETAIL" value="1">+ Ajouter un associé</button>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+</div>
+
+{{ dgi_simple_table("SUPPL3", "suppl3", "ÉTAT SUPPLÉMENTAIRE N°3 — COMPLÉMENT INFORMATIONS ENTITÉS INDIVIDUELLES (DGI-INS)", suppl3) }}
+
+<div class="card landscape" id="suppl4">
+  <h2>ÉTAT SUPPLÉMENTAIRE N°4 — TABLEAU DES AMORTISSEMENTS ET INVENTAIRE DES IMMOBILISATIONS (DGI-INS)</h2>
+  <form method="post" action="#suppl4">
+    <input type="hidden" name="note3_sheet" value="SUPPL4">
+    <input type="hidden" name="note_texte_sheet" value="SUPPL4">
+    <input type="hidden" name="cell__N_DETAIL" value="{{ suppl4.n }}">
+    <table>
+      <tr>
+        <th>N° compte</th><th>Désignation</th>
+        <th class="num">Taux %</th><th>Date mise en service</th>
+        <th class="num">Valeur d'acquisition</th><th class="num">Amort. antérieurs</th><th class="num">Amort. exercice</th>
+        <th class="num">Total amort.</th><th class="num">Valeur résiduelle</th>
+        <th class="num">Prix cession</th><th class="num">Plus-value</th><th class="num">Moins-value</th>
+      </tr>
+      {% for r in suppl4.rows %}
+      <tr>
+        <td><input type="text" size="8" name="texte_compte_{{ r.idx }}" value="{{ r.compte }}"></td>
+        <td><input type="text" name="texte_desig_{{ r.idx }}" value="{{ r.designation }}"></td>
+        <td class="num"><input type="text" size="6" name="cell_D_E_{{ r.idx }}" value="{{ r.vals.E|fmt }}"></td>
+        <td><input type="text" size="10" name="texte_date_{{ r.idx }}" value="{{ r.date_service }}"></td>
+        <td class="num"><input type="text" size="10" name="cell_D_G_{{ r.idx }}" value="{{ r.vals.G|fmt }}"></td>
+        <td class="num"><input type="text" size="10" name="cell_D_H_{{ r.idx }}" value="{{ r.vals.H|fmt }}"></td>
+        <td class="num"><input type="text" size="10" name="cell_D_I_{{ r.idx }}" value="{{ r.vals.I|fmt }}"></td>
+        <td class="num">{{ r.vals.J|fmt }}</td>
+        <td class="num">{{ r.vals.K|fmt }}</td>
+        <td class="num"><input type="text" size="10" name="cell_D_L_{{ r.idx }}" value="{{ r.vals.L|fmt }}"></td>
+        <td class="num">{{ r.vals.M|fmt }}</td>
+        <td class="num">{{ r.vals.N|fmt }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td colspan="2">TOTAL</td><td></td><td></td>
+        <td class="num">{{ suppl4.totals.G|fmt }}</td>
+        <td class="num">{{ suppl4.totals.H|fmt }}</td>
+        <td class="num">{{ suppl4.totals.I|fmt }}</td>
+        <td class="num">{{ suppl4.totals.J|fmt }}</td>
+        <td class="num">{{ suppl4.totals.K|fmt }}</td>
+        <td class="num">{{ suppl4.totals.L|fmt }}</td>
+        <td class="num">{{ suppl4.totals.M|fmt }}</td>
+        <td class="num">{{ suppl4.totals.N|fmt }}</td>
+      </tr>
+    </table>
+    <button class="btn" type="submit" name="ajouter__N_DETAIL" value="1">+ Ajouter une immobilisation</button>
+    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
+  </form>
+</div>
+
+{{ dgi_simple_table("SUPPL5", "suppl5", "ÉTAT SUPPLÉMENTAIRE N°5 — DÉTAIL DES FRAIS ACCESSOIRES SUR ACHATS (DGI-INS)", suppl5) }}
+{{ dgi_simple_table("SUPPL6", "suppl6", "ÉTAT SUPPLÉMENTAIRE N°6 — DÉTAIL DES AVANTAGES EN NATURE ET EN ESPÈCES ALLOUÉS AU PERSONNEL (DGI-INS)", suppl6) }}
+{{ dgi_simple_table("SUPPL7", "suppl7", "ÉTAT SUPPLÉMENTAIRE N°7 — CRÉANCES & DETTES ÉCHUES DE L'EXERCICE (DGI-INS)", suppl7) }}
+
+{% else %}
+<div class="card muted">Importez la balance de la période N pour afficher le BILAN, le RESULTAT, le TFT et les NOTES.</div>
+{% endif %}
+{% endblock %}

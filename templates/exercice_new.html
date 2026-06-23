@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:420px;">
+  <h2>Nouvel exercice</h2>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label>Année</label>
+    <input name="annee" type="number" required>
+    <label>Libellé (optionnel)</label>
+    <input name="libelle">
+    <label>Date de début de l'exercice</label>
+    <input name="date_debut" type="date">
+    <label>Date de fin de l'exercice (clos le)</label>
+    <input name="date_fin" type="date">
+    <button class="btn" type="submit">Créer</button>
+  </form>
+</div>
+{% endblock %}

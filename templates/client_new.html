@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:520px;">
+  <h2>Nouveau client</h2>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label>Raison sociale</label>
+    <input name="raison_sociale" required>
+    <label>NCC (numéro de compte contribuable)</label>
+    <input name="ncc">
+    <label>NTD</label>
+    <input name="ntd">
+    <label>Adresse</label>
+    <input name="adresse">
+    <hr style="border:none;border-top:1px solid #e6e9ec;margin:16px 0;">
+    <p class="muted">Compte d'accès du client à son espace :</p>
+    <label>Email du client</label>
+    <input type="email" name="email" required>
+    <label>Mot de passe</label>
+    <input type="password" name="password" required>
+    <button class="btn" type="submit">Créer le client</button>
+  </form>
+</div>
+{% endblock %}
