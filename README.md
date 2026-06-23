@@ -14,16 +14,35 @@ projet réel sont :
 - `Procfile`, `render.yaml`, `gunicorn` dans `requirements.txt` : nécessaires
   pour l'hébergement en ligne.
 
-## Comptes de test
+## Comptes de test — et comment cacher les mots de passe
 
-| Rôle | Email | Mot de passe |
-|---|---|---|
-| Cabinet (admin) | `admin@tafiroha.local` | `admin1234` |
-| Client (démo) | `client@demo.local` | `demo1234` |
+Les emails sont fixes (`admin@tafiroha.local` pour le cabinet,
+`client@demo.local` pour le client de démo), mais **les mots de passe ne
+sont jamais écrits dans le code ni dans ce fichier** — ce dépôt étant
+potentiellement public sur GitHub, un mot de passe écrit ici serait visible
+par n'importe qui. À la place :
+
+- Sur Render : aller dans le service → **Environment** → ajouter deux
+  variables `ADMIN_PASSWORD` et `DEMO_PASSWORD` avec les mots de passe de
+  ton choix, puis redéployer (bouton "Manual Deploy"). C'est la méthode
+  recommandée — ces variables ne sont jamais commitées sur GitHub.
+- Si tu ne définis pas ces variables, l'appli génère un mot de passe
+  aléatoire à chaque démarrage et l'affiche **uniquement dans les logs
+  privés de Render** (onglet "Logs" du service, lignes
+  `ADMIN_PASSWORD non défini : mot de passe admin généré -> ...`) —
+  personne d'autre que toi (connecté à ton compte Render) ne peut les voir.
 
 Le compte admin voit tous les clients (et peut en créer d'autres) ; le
 compte client de démo ne voit que sa propre page avec son historique
 (exercice 2025 déjà chargé).
+
+⚠️ Pour le dépôt GitHub : s'il était déjà créé en **public** sans cette
+protection, considère que le mot de passe par défaut d'origine
+(`admin1234`) a pu être visible dans l'historique Git — change-le
+immédiatement via `ADMIN_PASSWORD` comme indiqué ci-dessus. Pour plus de
+sûreté, tu peux aussi rendre le dépôt **privé** (Settings → Danger Zone →
+Change visibility sur GitHub) ; Render continue de fonctionner avec un
+dépôt privé.
 
 ## ⚠️ Important : données non persistantes sur l'hébergement gratuit
 
@@ -68,6 +87,9 @@ git push -u origin main
 4. Au bout de quelques minutes, Render donne une URL du type
    `https://tafiroha-demo.onrender.com` — c'est l'adresse à partager pour les
    tests.
+5. Avant de partager le lien : va dans **Environment** et définis
+   `ADMIN_PASSWORD` / `DEMO_PASSWORD` (voir section "Comptes de test"
+   ci-dessus), puis "Manual Deploy" pour appliquer.
 
 (Si l'option "Blueprint" n'est pas proposée par ton compte Render : choisir
 "Web Service" classique, sélectionner le dépôt, et renseigner manuellement :
