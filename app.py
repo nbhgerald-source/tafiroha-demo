@@ -3771,3 +3771,252 @@ def view_exercice(req, conn, user, exercice_id):
 
     # SOMMAIRE — selection manuelle des feuilles a imprimer (cf. classeur
     # Excel, feuille Sommaire, cellule O17 : "seules les feuilles cochees ici
+    # seront imprimees"). FICHE R4 reprend exactement ces memes cases sous
+    # forme de colonnes A / N-A (cf. formules =IF(Sommaire!xx=TRUE,"x","")).
+    sommaire_sel = load_sommaire_selection(conn, exercice_id)
+    hidden_card_ids = [cid for key, _label, cid in SOMMAIRE_SHEETS if not sommaire_sel.get(key, True)]
+    fiche_r4_rows = [
+        {"key": key, "label": label, "applicable": sommaire_sel.get(key, True)}
+        for key, label, _cid in SOMMAIRE_SHEETS
+    ]
+    garde = note_texte.get("GARDE", {})
+    sommaire_info = note_texte.get("SOMMAIRE", {})
+    fiche_r1 = note_texte.get("FICHE R1", {})
+    fiche_r2 = note_texte.get("FICHE R2", {})
+    fiche_r3 = note_texte.get("FICHE R3", {})
+
+    # FICHE R1 — "Domiciliations bancaires" : tableau a lignes dynamiques
+    # (Banque / N° de compte), meme mecanisme "+ Ajouter une ligne" que les
+    # autres notes (compteur "_N_BANQUE" stocke en note3_manual, valeurs en
+    # texte libre stockees en note_texte).
+    n_banques = int(ce._num(note3_manual.get("FICHE R1", {}).get("_N_BANQUE", 1))) or 1
+    fiche_r1_banques = [
+        {
+            "idx": i,
+            "banque": fiche_r1.get("banque_nom_%d" % i, ""),
+            "compte": fiche_r1.get("banque_compte_%d" % i, ""),
+        }
+        for i in range(n_banques)
+    ]
+
+    return Response(render(
+        "exercice_view.html", user=user, client=client, exo=exo, exo_duree_mois=exo_duree_mois,
+        balN=balN, balN1=balN1, tftn=tftn, tftn1=tftn1, upload_msg=upload_msg,
+        bilan_actif=bilan_actif, bilan_passif=bilan_passif, resultat_lines=resultat_lines,
+        tft_lines=tft_lines,
+        note3a=note3a, note3a_cols=NOTE3A_COLS,
+        note3c=note3c, note3c_cols=NOTE3C_COLS,
+        note3cbis=note3cbis, note3cbis_cols=NOTE3CBIS_COLS,
+        note3d=note3d, note3d_cols=NOTE3D_COLS,
+        note3b=note3b, note3b_cols=NOTE3B_COLS,
+        note3e=note3e,
+        notes_lot_a=notes_lot_a, notes_lot_a_defs=NOTES_LOT_A,
+        notes_lot_b=notes_lot_b, notes_lot_b_defs=NOTES_LOT_B,
+        notes_lot_c=notes_lot_c, notes_lot_c_defs=NOTES_LOT_C,
+        tables_lot_d=tables_lot_d,
+        note31=note31, note31_cols=NOTE31_COLS, note31_col_labels=NOTE31_COL_LABELS,
+        note34=note34,
+        note1=note1,
+        note32=note32, note33=note33, note16c=note16c, note30=note30,
+        note27b_rows=note27b_rows, note27b_cols=NOTE27B_COLS, note27b_side=note27b_side,
+        note13=note13,
+        note21=note21,
+        note_texte=note_texte, notes_texte_defs=NOTES_TEXTE_DEFS,
+        commentaire_defs=COMMENTAIRE_DEFS,
+        commentaire_map={k: fields for k, _label, fields in COMMENTAIRE_DEFS},
+        comp_tva=comp_tva,
+        comp_tva2=comp_tva2,
+        suppl1=suppl1,
+        suppl2=suppl2,
+        suppl3=suppl3,
+        suppl4=suppl4,
+        suppl5=suppl5,
+        suppl6=suppl6,
+        suppl7=suppl7,
+        comp_charges=comp_charges,
+        notes_dgi_ins_recap=notes_dgi_ins_recap,
+        sommaire_sel=sommaire_sel, sommaire_sheets=SOMMAIRE_SHEETS,
+        hidden_card_ids=hidden_card_ids, fiche_r4_rows=fiche_r4_rows,
+        garde=garde, garde_documents=GARDE_DOCUMENTS,
+        sommaire_info=sommaire_info, sommaire_champs=SOMMAIRE_CHAMPS,
+        fiche_r1=fiche_r1, fiche_r1_champs=FICHE_R1_CHAMPS, fiche_r1_banques=fiche_r1_banques,
+        fiche_r2=fiche_r2, fiche_r3=fiche_r3,
+        fiche_r2_activites_rows=range(1, FICHE_R2_ACTIVITES_ROWS + 1),
+        fiche_r3_dirigeants_rows=range(1, FICHE_R3_DIRIGEANTS_ROWS + 1),
+        fiche_r3_admin_rows=range(1, FICHE_R3_ADMIN_ROWS + 1),
+    ))
+
+
+def handle_upload(req, conn, exercice_id):
+    body = req._raw_body
+    ctype = req.environ.get("CONTENT_TYPE", "")
+    boundary = ctype.split("boundary=")[-1].encode()
+    parts = body.split(b"--" + boundary)
+    periode = "N"
+    upload_type = "balance"
+    file_bytes = None
+    for part in parts:
+        if b'name="periode"' in part:
+            periode = part.split(b"\r\n\r\n", 1)[-1].strip(b"\r\n -").decode("utf-8", "replace") or "N"
+        if b'name="type"' in part:
+            upload_type = part.split(b"\r\n\r\n", 1)[-1].strip(b"\r\n -").decode("utf-8", "replace") or "balance"
+        if b"filename=" in part and (
+            b'name="fichier"' in part or b'name="fichier_tft"' in part or b'name="fichier_xlsx"' in part
+        ):
+            header, _, content = part.partition(b"\r\n\r\n")
+            file_bytes = content.rstrip(b"\r\n--")
+            if b'name="fichier_tft"' in part:
+                upload_type = "tft_detail"
+            elif b'name="fichier_xlsx"' in part:
+                upload_type = "xlsx_import"
+    if not file_bytes:
+        return "Aucun fichier reçu."
+
+    if upload_type == "xlsx_import":
+        try:
+            parsed = parse_xlsx_import(file_bytes)
+        except Exception as exc:
+            return "Fichier xlsx illisible : %s" % exc
+        nb_bal, nb_tft = 0, 0
+        for p, rows in parsed["balance"].items():
+            conn.execute("DELETE FROM balance_lignes WHERE exercice_id=? AND periode=?", (exercice_id, p))
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO balance_lignes (exercice_id, periode, compte, designation, be_debit, be_credit, "
+                    "mvt_debit, mvt_credit, bs_debit, bs_credit) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (exercice_id, p, r["compte"], r["designation"],
+                     ce._num(r["be_debit"]), ce._num(r["be_credit"]),
+                     ce._num(r["mvt_debit"]), ce._num(r["mvt_credit"]),
+                     ce._num(r["bs_debit"]), ce._num(r["bs_credit"])),
+                )
+            nb_bal += len(rows)
+        for p, rows in parsed["tft"].items():
+            conn.execute("DELETE FROM tft_detail_lignes WHERE exercice_id=? AND periode=?", (exercice_id, p))
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO tft_detail_lignes (exercice_id, periode, compte, designation, be_debit, be_credit, "
+                    "mvt_debit, mvt_credit, bs_debit, bs_credit) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (exercice_id, p, r["compte"], r["designation"],
+                     ce._num(r["be_debit"]), ce._num(r["be_credit"]),
+                     ce._num(r["mvt_debit"]), ce._num(r["mvt_credit"]),
+                     ce._num(r["bs_debit"]), ce._num(r["bs_credit"])),
+                )
+            nb_tft += len(rows)
+        conn.commit()
+        alerts = compute_controles_xlsx(parsed)
+        msg = ("Fichier xlsx importé : %d ligne(s) de balance (N+N-1), %d ligne(s) de détail TFT (N+N-1)."
+               % (nb_bal, nb_tft))
+        if alerts:
+            msg += " ⚠️ Anomalies détectées — " + " | ".join(alerts)
+        else:
+            msg += " Aucune anomalie détectée par les contrôles intégrés (équilibre, comptes à éclater)."
+        return msg
+
+    periode = "N1" if "N1" in periode else "N"
+    rows = parse_csv_balance(file_bytes)
+    if not rows:
+        return "Fichier CSV vide ou illisible."
+
+    table = "tft_detail_lignes" if upload_type == "tft_detail" else "balance_lignes"
+    conn.execute("DELETE FROM %s WHERE exercice_id=? AND periode=?" % table, (exercice_id, periode))
+    for r in rows:
+        conn.execute(
+            "INSERT INTO %s (exercice_id, periode, compte, designation, be_debit, be_credit, "
+            "mvt_debit, mvt_credit, bs_debit, bs_credit) VALUES (?,?,?,?,?,?,?,?,?,?)" % table,
+            (
+                exercice_id, periode, r["compte"], r["designation"],
+                ce._num(r["be_debit"]), ce._num(r["be_credit"]),
+                ce._num(r["mvt_debit"]), ce._num(r["mvt_credit"]),
+                ce._num(r["bs_debit"]), ce._num(r["bs_credit"]),
+            ),
+        )
+    conn.commit()
+    label = "détail TFT" if upload_type == "tft_detail" else "balance"
+    return "%d lignes (%s) importées pour la période %s." % (len(rows), label, periode)
+
+
+NOT_FOUND = Response("Page introuvable", status="404 Not Found")
+
+# Fichiers statiques téléchargeables depuis l'application (liste blanche par
+# sécurité : on ne sert que ces fichiers connus, jamais un chemin arbitraire).
+STATIC_FILES = {
+    "TAFIROHA-DGI_Import.xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+def view_static(req, conn, filename):
+    ctype = STATIC_FILES.get(filename)
+    if not ctype:
+        return NOT_FOUND
+    path = os.path.join(STATIC_DIR, filename)
+    if not os.path.isfile(path):
+        return NOT_FOUND
+    with open(path, "rb") as f:
+        data = f.read()
+    return Response(
+        data, content_type=ctype,
+        headers=[("Content-Disposition", 'attachment; filename="%s"' % filename)],
+    )
+
+
+def dispatch(req, conn):
+    path = req.path.rstrip("/") or "/"
+
+    if path == "/login":
+        return view_login(req, conn)
+
+    user = require_login(req, conn)
+
+    if path == "/logout":
+        return view_logout(req, conn)
+
+    if not user:
+        return redirect("/login")
+
+    if path.startswith("/static/"):
+        return view_static(req, conn, path[len("/static/"):])
+
+    if path == "/" or path == "":
+        return redirect("/admin" if user["role"] == "admin" else "/client/%d" % user["client_id"])
+
+    if path == "/admin":
+        return view_admin_dashboard(req, conn, user)
+
+    if path == "/admin/clients/new":
+        return view_client_new(req, conn, user)
+
+    if path.startswith("/client/") and path.endswith("/exercices/new"):
+        client_id = int(path.split("/")[2])
+        return view_exercice_new(req, conn, user, client_id)
+
+    if path.startswith("/client/"):
+        client_id = int(path.split("/")[2])
+        return view_client_dashboard(req, conn, user, client_id)
+
+    if path.startswith("/exercice/"):
+        exercice_id = int(path.split("/")[2])
+        return view_exercice(req, conn, user, exercice_id)
+
+    return NOT_FOUND
+
+
+def application(environ, start_response):
+    req = Request(environ)
+    conn = db.get_conn()
+    try:
+        resp = dispatch(req, conn)
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc()
+        resp = Response("<pre>%s</pre>" % tb, status="500 Internal Server Error")
+    finally:
+        conn.close()
+    start_response(resp.status, resp.headers)
+    return [resp.body]
+
+
+if __name__ == "__main__":
+    db.init_db()
+    port = int(os.environ.get("PORT", "8000"))
+    print("TAFIROHA en ligne — http://127.0.0.1:%d  (login: admin@tafiroha.local / admin1234)" % port)
+    make_server("0.0.0.0", port, application).serve_forever()
