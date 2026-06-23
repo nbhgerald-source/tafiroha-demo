@@ -15,16 +15,19 @@ import csv
 import io
 import os
 import re
+import zipfile
 from datetime import datetime
 from urllib.parse import parse_qs, urlencode
 from wsgiref.simple_server import make_server
 from jinja2 import Environment, FileSystemLoader
+import openpyxl
 
 import db
 import calc_engine as ce
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 jinja_env = Environment(loader=FileSystemLoader(os.path.join(BASE_DIR, "templates")))
+STATIC_DIR = os.path.join(BASE_DIR, "static_files")
 
 
 def render(name, **ctx):
@@ -268,6 +271,161 @@ def parse_csv_balance(file_bytes):
             "bs_debit": r[6], "bs_credit": r[7],
         })
     return out
+
+
+# ------------------------------------------------- import xlsx officiel --
+# Le fichier "TAFIROHA-DGI_Import.xlsx" (téléchargeable via /static/...) est
+# le modèle officiel de balance à 6 colonnes : il contient les mêmes tables
+# Excel BalanceN/BalanceN1/TFTN/TFTN1 que le classeur TAFIROHA d'origine,
+# plus des formules de contrôle (équilibre, anomalies Vérif/SI/SF, cohérence
+# comptes à éclater). On relit directement ces tables avec openpyxl et on
+# recalcule les mêmes contrôles en Python (plus robuste que de dépendre des
+# valeurs mises en cache par Excel).
+XLSX_BALANCE_TABLES = {"N": "BalanceN", "N1": "BalanceN1"}
+XLSX_TFT_TABLES = {"N": "TFTN", "N1": "TFTN1"}
+XLSX_TABLE_COLS = ("Compte", "Désignation", "BE_Debit", "BE_Credit",
+                   "Mvt_Debit", "Mvt_Credit", "BS_Debit", "BS_Credit")
+
+
+def _read_table_rows(wb, table_name):
+    """Lit les lignes d'une table Excel nommée (BalanceN/BalanceN1/TFTN/TFTN1),
+    quelle que soit la feuille qui la contient, et ne retient que les lignes
+    où le compte est renseigné."""
+    for ws in wb.worksheets:
+        for tbl in getattr(ws, "tables", {}).values():
+            if tbl.name != table_name:
+                continue
+            cells = ws[tbl.ref]
+            header = [c.value for c in cells[0]]
+            col_idx = {name: header.index(name) for name in XLSX_TABLE_COLS if name in header}
+            if "Compte" not in col_idx:
+                return []
+            out = []
+            for row in cells[1:]:
+                compte = row[col_idx["Compte"]].value
+                if compte in (None, ""):
+                    continue
+
+                def val(key):
+                    i = col_idx.get(key)
+                    v = row[i].value if i is not None else None
+                    return v if v is not None else 0
+
+                out.append({
+                    "compte": str(compte).strip(),
+                    "designation": str(val("Désignation") or ""),
+                    "be_debit": val("BE_Debit"), "be_credit": val("BE_Credit"),
+                    "mvt_debit": val("Mvt_Debit"), "mvt_credit": val("Mvt_Credit"),
+                    "bs_debit": val("BS_Debit"), "bs_credit": val("BS_Credit"),
+                })
+            return out
+    return []
+
+
+def parse_xlsx_import(file_bytes):
+    """Lit le fichier officiel d'import (tables BalanceN/BalanceN1/TFTN/TFTN1)
+    et retourne {"balance": {"N":[...], "N1":[...]}, "tft": {"N":[...], "N1":[...]}}."""
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    return {
+        "balance": {p: _read_table_rows(wb, t) for p, t in XLSX_BALANCE_TABLES.items()},
+        "tft": {p: _read_table_rows(wb, t) for p, t in XLSX_TFT_TABLES.items()},
+    }
+
+
+def _num0(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def compute_controles_xlsx(parsed):
+    """Reproduit en Python les contrôles intégrés au fichier d'import officiel :
+    équilibre de la balance (BE/Mvt/BS) et cohérence du détail des comptes à
+    éclater (106, 154, 1984, 4781, 4791, 4816, 4817, 4818) entre la Balance et
+    la table TFT. Retourne une liste de messages d'anomalie (vide si tout est
+    conforme)."""
+    alerts = []
+    for periode, rows in parsed["balance"].items():
+        be_d = sum(_num0(r["be_debit"]) for r in rows)
+        be_c = sum(_num0(r["be_credit"]) for r in rows)
+        mv_d = sum(_num0(r["mvt_debit"]) for r in rows)
+        mv_c = sum(_num0(r["mvt_credit"]) for r in rows)
+        bs_d = sum(_num0(r["bs_debit"]) for r in rows)
+        bs_c = sum(_num0(r["bs_credit"]) for r in rows)
+        if round(be_d, 2) != round(be_c, 2):
+            alerts.append("Période %s : balance d'entrée non équilibrée (Débit %.2f / Crédit %.2f)." % (periode, be_d, be_c))
+        if round(mv_d, 2) != round(mv_c, 2):
+            alerts.append("Période %s : mouvements non équilibrés (Débit %.2f / Crédit %.2f)." % (periode, mv_d, mv_c))
+        if round(bs_d, 2) != round(bs_c, 2):
+            alerts.append("Période %s : balance de sortie non équilibrée (Débit %.2f / Crédit %.2f)." % (periode, bs_d, bs_c))
+
+    racines = ["106", "154", "1984", "4781", "4791", "4816", "4817", "4818"]
+    for periode in ("N", "N1"):
+        bal_rows = parsed["balance"].get(periode, [])
+        tft_rows = parsed["tft"].get(periode, [])
+        for racine in racines:
+            bal_total = sum(
+                _num0(r["bs_debit"]) - _num0(r["bs_credit"])
+                for r in bal_rows if r["compte"].startswith(racine)
+            )
+            tft_total = sum(
+                _num0(r["bs_debit"]) - _num0(r["bs_credit"])
+                for r in tft_rows if r["compte"].startswith(racine)
+            )
+            if round(bal_total, 2) != round(tft_total, 2):
+                alerts.append(
+                    "Période %s : détail du compte %s non conforme entre la balance (%.2f) et le détail TFT (%.2f)."
+                    % (periode, racine, bal_total, tft_total)
+                )
+    return alerts
+
+
+def _rows_to_csv_bytes(rows):
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(["compte", "designation", "be_debit", "be_credit", "mvt_debit", "mvt_credit", "bs_debit", "bs_credit"])
+    for r in rows:
+        writer.writerow([r["compte"], r["designation"], r["be_debit"], r["be_credit"],
+                          r["mvt_debit"], r["mvt_credit"], r["bs_debit"], r["bs_credit"]])
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def _extract_multipart_file(req, field_name):
+    body = req._raw_body
+    ctype = req.environ.get("CONTENT_TYPE", "")
+    boundary = ctype.split("boundary=")[-1].encode()
+    parts = body.split(b"--" + boundary)
+    needle = ('name="%s"' % field_name).encode()
+    for part in parts:
+        if b"filename=" in part and needle in part:
+            header, _, content = part.partition(b"\r\n\r\n")
+            return content.rstrip(b"\r\n--")
+    return None
+
+
+def handle_xlsx_to_csv(req):
+    """Génère, à partir du fichier xlsx officiel uploadé, un zip de 4 CSV
+    (balance_N/N1, tft_N/N1) au format attendu par l'import CSV existant —
+    sans rien écrire en base. Retourne None si le fichier est illisible."""
+    file_bytes = _extract_multipart_file(req, "fichier_xlsx_csv")
+    if not file_bytes:
+        return None
+    try:
+        parsed = parse_xlsx_import(file_bytes)
+    except Exception:
+        return None
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("balance_N.csv", _rows_to_csv_bytes(parsed["balance"]["N"]))
+        zf.writestr("balance_N1.csv", _rows_to_csv_bytes(parsed["balance"]["N1"]))
+        zf.writestr("tft_N.csv", _rows_to_csv_bytes(parsed["tft"]["N"]))
+        zf.writestr("tft_N1.csv", _rows_to_csv_bytes(parsed["tft"]["N1"]))
+    return Response(
+        buf.getvalue(),
+        content_type="application/zip",
+        headers=[("Content-Disposition", 'attachment; filename="tafiroha_csv_import.zip"')],
+    )
 
 
 def load_balance(conn, exercice_id, periode):
@@ -3477,7 +3635,13 @@ def view_exercice(req, conn, user, exercice_id):
 
     upload_msg = None
     if req.method == "POST" and req.environ.get("CONTENT_TYPE", "").startswith("multipart/form-data"):
-        upload_msg = handle_upload(req, conn, exercice_id)
+        if b'name="fichier_xlsx_csv"' in req._raw_body:
+            zip_resp = handle_xlsx_to_csv(req)
+            if zip_resp is not None:
+                return zip_resp
+            upload_msg = "Fichier xlsx illisible : impossible de générer les CSV."
+        else:
+            upload_msg = handle_upload(req, conn, exercice_id)
     elif req.method == "POST" and req.form.get("exercice_dates_save"):
         # Dates de debut/fin d'exercice : ne sont pas saisies a la creation de
         # l'exercice (cf. exercice_new.html, qui ne demande que l'annee) -> on
@@ -3607,183 +3771,3 @@ def view_exercice(req, conn, user, exercice_id):
 
     # SOMMAIRE — selection manuelle des feuilles a imprimer (cf. classeur
     # Excel, feuille Sommaire, cellule O17 : "seules les feuilles cochees ici
-    # seront imprimees"). FICHE R4 reprend exactement ces memes cases sous
-    # forme de colonnes A / N-A (cf. formules =IF(Sommaire!xx=TRUE,"x","")).
-    sommaire_sel = load_sommaire_selection(conn, exercice_id)
-    hidden_card_ids = [cid for key, _label, cid in SOMMAIRE_SHEETS if not sommaire_sel.get(key, True)]
-    fiche_r4_rows = [
-        {"key": key, "label": label, "applicable": sommaire_sel.get(key, True)}
-        for key, label, _cid in SOMMAIRE_SHEETS
-    ]
-    garde = note_texte.get("GARDE", {})
-    sommaire_info = note_texte.get("SOMMAIRE", {})
-    fiche_r1 = note_texte.get("FICHE R1", {})
-    fiche_r2 = note_texte.get("FICHE R2", {})
-    fiche_r3 = note_texte.get("FICHE R3", {})
-
-    # FICHE R1 — "Domiciliations bancaires" : tableau a lignes dynamiques
-    # (Banque / N° de compte), meme mecanisme "+ Ajouter une ligne" que les
-    # autres notes (compteur "_N_BANQUE" stocke en note3_manual, valeurs en
-    # texte libre stockees en note_texte).
-    n_banques = int(ce._num(note3_manual.get("FICHE R1", {}).get("_N_BANQUE", 1))) or 1
-    fiche_r1_banques = [
-        {
-            "idx": i,
-            "banque": fiche_r1.get("banque_nom_%d" % i, ""),
-            "compte": fiche_r1.get("banque_compte_%d" % i, ""),
-        }
-        for i in range(n_banques)
-    ]
-
-    return Response(render(
-        "exercice_view.html", user=user, client=client, exo=exo, exo_duree_mois=exo_duree_mois,
-        balN=balN, balN1=balN1, tftn=tftn, tftn1=tftn1, upload_msg=upload_msg,
-        bilan_actif=bilan_actif, bilan_passif=bilan_passif, resultat_lines=resultat_lines,
-        tft_lines=tft_lines,
-        note3a=note3a, note3a_cols=NOTE3A_COLS,
-        note3c=note3c, note3c_cols=NOTE3C_COLS,
-        note3cbis=note3cbis, note3cbis_cols=NOTE3CBIS_COLS,
-        note3d=note3d, note3d_cols=NOTE3D_COLS,
-        note3b=note3b, note3b_cols=NOTE3B_COLS,
-        note3e=note3e,
-        notes_lot_a=notes_lot_a, notes_lot_a_defs=NOTES_LOT_A,
-        notes_lot_b=notes_lot_b, notes_lot_b_defs=NOTES_LOT_B,
-        notes_lot_c=notes_lot_c, notes_lot_c_defs=NOTES_LOT_C,
-        tables_lot_d=tables_lot_d,
-        note31=note31, note31_cols=NOTE31_COLS, note31_col_labels=NOTE31_COL_LABELS,
-        note34=note34,
-        note1=note1,
-        note32=note32, note33=note33, note16c=note16c, note30=note30,
-        note27b_rows=note27b_rows, note27b_cols=NOTE27B_COLS, note27b_side=note27b_side,
-        note13=note13,
-        note21=note21,
-        note_texte=note_texte, notes_texte_defs=NOTES_TEXTE_DEFS,
-        commentaire_defs=COMMENTAIRE_DEFS,
-        commentaire_map={k: fields for k, _label, fields in COMMENTAIRE_DEFS},
-        comp_tva=comp_tva,
-        comp_tva2=comp_tva2,
-        suppl1=suppl1,
-        suppl2=suppl2,
-        suppl3=suppl3,
-        suppl4=suppl4,
-        suppl5=suppl5,
-        suppl6=suppl6,
-        suppl7=suppl7,
-        comp_charges=comp_charges,
-        notes_dgi_ins_recap=notes_dgi_ins_recap,
-        sommaire_sel=sommaire_sel, sommaire_sheets=SOMMAIRE_SHEETS,
-        hidden_card_ids=hidden_card_ids, fiche_r4_rows=fiche_r4_rows,
-        garde=garde, garde_documents=GARDE_DOCUMENTS,
-        sommaire_info=sommaire_info, sommaire_champs=SOMMAIRE_CHAMPS,
-        fiche_r1=fiche_r1, fiche_r1_champs=FICHE_R1_CHAMPS, fiche_r1_banques=fiche_r1_banques,
-        fiche_r2=fiche_r2, fiche_r3=fiche_r3,
-        fiche_r2_activites_rows=range(1, FICHE_R2_ACTIVITES_ROWS + 1),
-        fiche_r3_dirigeants_rows=range(1, FICHE_R3_DIRIGEANTS_ROWS + 1),
-        fiche_r3_admin_rows=range(1, FICHE_R3_ADMIN_ROWS + 1),
-    ))
-
-
-def handle_upload(req, conn, exercice_id):
-    body = req._raw_body
-    ctype = req.environ.get("CONTENT_TYPE", "")
-    boundary = ctype.split("boundary=")[-1].encode()
-    parts = body.split(b"--" + boundary)
-    periode = "N"
-    upload_type = "balance"
-    file_bytes = None
-    for part in parts:
-        if b'name="periode"' in part:
-            periode = part.split(b"\r\n\r\n", 1)[-1].strip(b"\r\n -").decode("utf-8", "replace") or "N"
-        if b'name="type"' in part:
-            upload_type = part.split(b"\r\n\r\n", 1)[-1].strip(b"\r\n -").decode("utf-8", "replace") or "balance"
-        if b"filename=" in part and (b'name="fichier"' in part or b'name="fichier_tft"' in part):
-            header, _, content = part.partition(b"\r\n\r\n")
-            file_bytes = content.rstrip(b"\r\n--")
-            if b'name="fichier_tft"' in part:
-                upload_type = "tft_detail"
-    if not file_bytes:
-        return "Aucun fichier reçu."
-    periode = "N1" if "N1" in periode else "N"
-    rows = parse_csv_balance(file_bytes)
-    if not rows:
-        return "Fichier CSV vide ou illisible."
-
-    table = "tft_detail_lignes" if upload_type == "tft_detail" else "balance_lignes"
-    conn.execute("DELETE FROM %s WHERE exercice_id=? AND periode=?" % table, (exercice_id, periode))
-    for r in rows:
-        conn.execute(
-            "INSERT INTO %s (exercice_id, periode, compte, designation, be_debit, be_credit, "
-            "mvt_debit, mvt_credit, bs_debit, bs_credit) VALUES (?,?,?,?,?,?,?,?,?,?)" % table,
-            (
-                exercice_id, periode, r["compte"], r["designation"],
-                ce._num(r["be_debit"]), ce._num(r["be_credit"]),
-                ce._num(r["mvt_debit"]), ce._num(r["mvt_credit"]),
-                ce._num(r["bs_debit"]), ce._num(r["bs_credit"]),
-            ),
-        )
-    conn.commit()
-    label = "détail TFT" if upload_type == "tft_detail" else "balance"
-    return "%d lignes (%s) importées pour la période %s." % (len(rows), label, periode)
-
-
-NOT_FOUND = Response("Page introuvable", status="404 Not Found")
-
-
-def dispatch(req, conn):
-    path = req.path.rstrip("/") or "/"
-
-    if path == "/login":
-        return view_login(req, conn)
-
-    user = require_login(req, conn)
-
-    if path == "/logout":
-        return view_logout(req, conn)
-
-    if not user:
-        return redirect("/login")
-
-    if path == "/" or path == "":
-        return redirect("/admin" if user["role"] == "admin" else "/client/%d" % user["client_id"])
-
-    if path == "/admin":
-        return view_admin_dashboard(req, conn, user)
-
-    if path == "/admin/clients/new":
-        return view_client_new(req, conn, user)
-
-    if path.startswith("/client/") and path.endswith("/exercices/new"):
-        client_id = int(path.split("/")[2])
-        return view_exercice_new(req, conn, user, client_id)
-
-    if path.startswith("/client/"):
-        client_id = int(path.split("/")[2])
-        return view_client_dashboard(req, conn, user, client_id)
-
-    if path.startswith("/exercice/"):
-        exercice_id = int(path.split("/")[2])
-        return view_exercice(req, conn, user, exercice_id)
-
-    return NOT_FOUND
-
-
-def application(environ, start_response):
-    req = Request(environ)
-    conn = db.get_conn()
-    try:
-        resp = dispatch(req, conn)
-    except Exception as exc:
-        import traceback
-        tb = traceback.format_exc()
-        resp = Response("<pre>%s</pre>" % tb, status="500 Internal Server Error")
-    finally:
-        conn.close()
-    start_response(resp.status, resp.headers)
-    return [resp.body]
-
-
-if __name__ == "__main__":
-    db.init_db()
-    port = int(os.environ.get("PORT", "8000"))
-    print("TAFIROHA en ligne — http://127.0.0.1:%d  (login: admin@tafiroha.local / admin1234)" % port)
-    make_server("0.0.0.0", port, application).serve_forever()

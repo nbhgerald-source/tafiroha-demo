@@ -8,7 +8,7 @@
   header { background:#0b3d2e; color:#fff; padding:14px 24px; display:flex; justify-content:space-between; align-items:center; }
   header a { color:#fff; text-decoration:none; font-weight:600; }
   header nav a { margin-left:16px; color:#cfe8da; font-weight:400; font-size:14px; }
-  main { max-width:1000px; margin:24px auto; padding:0 16px; }
+  main { max-width:1280px; margin:24px auto; padding:0 16px; }
   .card { background:#fff; border-radius:8px; padding:20px 24px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { padding:6px 10px; border-bottom:1px solid #e6e9ec; text-align:left; }
@@ -24,7 +24,19 @@
   .muted { color:#7a8794; font-size:13px; }
   h1,h2,h3 { margin-top:0; }
   .pill { background:#e3f1ea; color:#0b3d2e; padding:2px 9px; border-radius:10px; font-size:12px; }
-  .notenav { position:sticky; top:0; z-index:10; background:#fff; border-radius:8px; padding:10px 14px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.08); display:flex; flex-wrap:wrap; gap:6px 10px; max-height:90px; overflow-y:auto; }
+  /* Navigation entre feuilles : volet vertical fixé à gauche du contenu de
+     l'exercice (cf. .exercice-layout / .exercice-content ci-dessous), au
+     lieu d'une barre horizontale — plus lisible avec le grand nombre
+     d'onglets (Balance, Sommaire, Bilan, Notes 1 à 39, DGI-INS...). */
+  .exercice-layout { display:flex; align-items:flex-start; gap:20px; }
+  .exercice-content { flex:1 1 auto; min-width:0; }
+  .notenav {
+    position:sticky; top:24px; flex:0 0 270px; width:270px;
+    z-index:10; background:#fff; border-radius:8px; padding:16px 14px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08);
+    display:flex; flex-direction:column; gap:6px;
+    max-height:calc(100vh - 48px); overflow-y:auto;
+  }
   /* Entete reproduisant, en contenu visible (et pas seulement dans la marge
      d'impression), les lignes 1-6 de chaque feuille du classeur Excel
      d'origine : numero de page + titre, puis "Dénomination sociale de
@@ -38,8 +50,22 @@
   .tafiroha-entete .te-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px 16px; }
   .tafiroha-entete .te-grid div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .tafiroha-entete .te-grid b { font-weight:600; color:#1d2733; }
-  .notenav a { font-size:12px; color:#0b3d2e; text-decoration:none; background:#e3f1ea; padding:3px 9px; border-radius:10px; white-space:nowrap; }
+  .notenav a {
+    font-size:14px; line-height:1.3; color:#0b3d2e; text-decoration:none;
+    background:#e3f1ea; padding:8px 12px; border-radius:6px;
+    white-space:normal; word-break:break-word;
+  }
   .notenav a:hover { background:#cfe8da; }
+  @media (max-width:980px) {
+    /* Sous cette largeur, repasse en barre horizontale en haut de page :
+       un volet fixe de 270px ne laisse plus assez de place au contenu. */
+    .exercice-layout { display:block; }
+    .notenav {
+      position:static; width:auto; flex:initial; flex-direction:row; flex-wrap:wrap;
+      max-height:160px; margin-bottom:20px;
+    }
+    .notenav a { white-space:nowrap; }
+  }
   :target { animation: tafiroha-highlight 1.6s ease-out; }
   @keyframes tafiroha-highlight { 0% { box-shadow:0 0 0 3px #0b3d2e55; } 100% { box-shadow:0 1px 3px rgba(0,0,0,.08); } }
 
@@ -170,24 +196,4 @@ var tafirohaHiddenIds = {{ hidden_card_ids|default([]) }};
   var pageNo = 0;
   cards.forEach(function (card) {
     if (excludedIds.indexOf(card.id) !== -1) { return; }
-    if (inactiveIds.indexOf(card.id) !== -1) { return; }
-    if (card.querySelector(':scope > .tafiroha-entete')) { return; }
-    pageNo += 1;
-    var div = document.createElement('div');
-    div.className = 'tafiroha-entete';
-    div.innerHTML =
-      '<div class="te-row1"><span>- ' + pageNo + ' -</span></div>' +
-      '<div class="te-grid">' +
-        '<div><b>Dénomination sociale de l\'entité :</b> ' + entete.denomination + '</div>' +
-        '<div><b>Sigle usuel :</b> ' + entete.sigle + '</div>' +
-        '<div><b>Adresse :</b> ' + entete.adresse + '</div>' +
-        '<div><b>N° de compte contribuable (NCC) :</b> ' + entete.ncc + '</div>' +
-        '<div><b>Exercice clos le :</b> ' + entete.exerciceClosLe + '  —  <b>Durée (en mois) :</b> ' + entete.dureeMois + '</div>' +
-        '<div><b>N° de télédéclarant (NTD) :</b> ' + entete.ntd + '</div>' +
-      '</div>';
-    card.insertBefore(div, card.firstChild);
-  });
-})();
-</script>
-</body>
-</html>
+    if (inactiveIds.indexOf(card.id) 

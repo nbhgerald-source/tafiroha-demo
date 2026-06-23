@@ -340,6 +340,7 @@
   </p>
 </div>
 
+<div class="exercice-layout">
 <nav class="notenav">
   <a href="#import-balance">Balance</a>
   <a href="#import-tft">Détail TFT</a>
@@ -403,8 +404,37 @@
   {% endif %}
 </nav>
 
+<div class="exercice-content">
+
+<div class="card no-print" id="import-xlsx">
+  <h3>Modèle officiel de balance à 6 colonnes (xlsx)</h3>
+  <p class="muted">
+    Téléchargez le fichier xlsx officiel : il contient les mêmes tableaux que dans Excel
+    (balance N / N-1, détail TFT N / N-1) avec des contrôles intégrés (équilibre, comptes à éclater).
+    Remplissez-le et corrigez les anomalies signalées dans le fichier, puis revenez ici pour
+    l'importer directement, ou pour en générer les CSV.
+  </p>
+  <p><a class="btn" href="/static/TAFIROHA-DGI_Import.xlsx">⬇ Télécharger le modèle xlsx</a></p>
+
+  <form method="post" enctype="multipart/form-data" class="grid2" action="#import-xlsx">
+    <div>
+      <label>Importer directement ce fichier (balance + TFT, N et N-1)</label>
+      <input type="file" name="fichier_xlsx" accept=".xlsx" required>
+    </div>
+    <div><button class="btn" type="submit">Importer le xlsx</button></div>
+  </form>
+
+  <form method="post" enctype="multipart/form-data" class="grid2" action="#import-xlsx" style="margin-top:.5rem">
+    <div>
+      <label>Ou générer les CSV (balance/TFT × N/N-1) à partir de ce fichier, sans les importer</label>
+      <input type="file" name="fichier_xlsx_csv" accept=".xlsx" required>
+    </div>
+    <div><button class="btn" type="submit">Générer les CSV (.zip)</button></div>
+  </form>
+</div>
+
 <div class="card no-print" id="import-balance">
-  <h3>Import de la balance comptable</h3>
+  <h3>Import de la balance comptable (CSV)</h3>
   <p class="muted">Fichier CSV avec colonnes : compte;designation;be_debit;be_credit;mvt_debit;mvt_credit;bs_debit;bs_credit</p>
   {% if upload_msg %}<div class="msg">{{ upload_msg }}</div>{% endif %}
   <form method="post" enctype="multipart/form-data" class="grid2" action="#import-balance">
@@ -1346,31 +1376,4 @@
         <td class="num">{{ r.vals.K|fmt }}</td>
         <td class="num"><input type="text" size="10" name="cell_D_L_{{ r.idx }}" value="{{ r.vals.L|fmt }}"></td>
         <td class="num">{{ r.vals.M|fmt }}</td>
-        <td class="num">{{ r.vals.N|fmt }}</td>
-      </tr>
-      {% endfor %}
-      <tr class="total">
-        <td colspan="2">TOTAL</td><td></td><td></td>
-        <td class="num">{{ suppl4.totals.G|fmt }}</td>
-        <td class="num">{{ suppl4.totals.H|fmt }}</td>
-        <td class="num">{{ suppl4.totals.I|fmt }}</td>
-        <td class="num">{{ suppl4.totals.J|fmt }}</td>
-        <td class="num">{{ suppl4.totals.K|fmt }}</td>
-        <td class="num">{{ suppl4.totals.L|fmt }}</td>
-        <td class="num">{{ suppl4.totals.M|fmt }}</td>
-        <td class="num">{{ suppl4.totals.N|fmt }}</td>
-      </tr>
-    </table>
-    <button class="btn" type="submit" name="ajouter__N_DETAIL" value="1">+ Ajouter une immobilisation</button>
-    <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
-  </form>
-</div>
-
-{{ dgi_simple_table("SUPPL5", "suppl5", "ÉTAT SUPPLÉMENTAIRE N°5 — DÉTAIL DES FRAIS ACCESSOIRES SUR ACHATS (DGI-INS)", suppl5) }}
-{{ dgi_simple_table("SUPPL6", "suppl6", "ÉTAT SUPPLÉMENTAIRE N°6 — DÉTAIL DES AVANTAGES EN NATURE ET EN ESPÈCES ALLOUÉS AU PERSONNEL (DGI-INS)", suppl6) }}
-{{ dgi_simple_table("SUPPL7", "suppl7", "ÉTAT SUPPLÉMENTAIRE N°7 — CRÉANCES & DETTES ÉCHUES DE L'EXERCICE (DGI-INS)", suppl7) }}
-
-{% else %}
-<div class="card muted">Importez la balance de la période N pour afficher le BILAN, le RESULTAT, le TFT et les NOTES.</div>
-{% endif %}
-{% endblock %}
+        <t
