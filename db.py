@@ -112,10 +112,43 @@ def get_conn():
     return conn
 
 
+def _repair_dangling_users_old_refs(conn):
+    """Filet de sécurité : si une future migration de schéma renomme un jour
+    la table "users" (par ex. pour ajouter une contrainte CHECK), SQLite
+    réécrit automatiquement les clauses REFERENCES des autres tables
+    (clients.created_by, sessions.user_id) pour pointer vers le nom
+    temporaire utilisé pendant le renommage. Si cette table temporaire est
+    ensuite supprimée sans avoir pris soin de désactiver ce comportement
+    (PRAGMA legacy_alter_table=ON), ces tables se retrouvent avec une
+    référence vers une table qui n'existe plus — voir le même bug corrigé
+    dans tafiroha_app/db.py le 2026-06-24. Pour l'instant, le schéma de
+    tafiroha_demo inclut "gestionnaire" depuis sa création et ne nécessite
+    aucun renommage, donc cette fonction est un no-op ; elle s'auto-répare
+    si jamais une migration future réintroduit ce problème."""
+    broken = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE '%users_old%'"
+    ).fetchall()
+    if not broken:
+        return
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("PRAGMA foreign_keys=OFF")
+    for r in broken:
+        name = r["name"]
+        col_list = ", ".join(c["name"] for c in conn.execute("PRAGMA table_info(%s)" % name).fetchall())
+        conn.execute("ALTER TABLE %s RENAME TO %s_brk" % (name, name))
+        conn.executescript(SCHEMA)  # recrée "name" avec la bonne définition (IF NOT EXISTS)
+        conn.execute("INSERT INTO %s (%s) SELECT %s FROM %s_brk" % (name, col_list, col_list, name))
+        conn.execute("DROP TABLE %s_brk" % name)
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.commit()
+
+
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
+    _repair_dangling_users_old_refs(conn)
     cur = conn.execute("SELECT COUNT(*) c FROM users WHERE role='admin'")
     if cur.fetchone()["c"] == 0:
         create_user(conn, "admin@tafiroha.local", "admin1234", "admin", None)
