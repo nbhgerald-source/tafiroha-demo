@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:0 auto;">
+  <h2>Nouveau gestionnaire</h2>
+  <p class="muted">Ce compte pourra créer et gérer ses propres clients sans voir ceux des autres.</p>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="POST">
+    <label>Email du gestionnaire</label>
+    <input type="email" name="email" required placeholder="gestionnaire@cabinet.local">
+
+    <label>Mot de passe</label>
+    <input type="password" name="password" required placeholder="Mot de passe sécurisé">
+
+    <button class="btn" type="submit">Créer le gestionnaire</button>
+    <a href="/admin" style="margin-left:12px;font-size:14px;">Annuler</a>
+  </form>
+</div>
+{% endblock %}

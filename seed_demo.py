@@ -16,6 +16,8 @@ import db
 DEMO_CLIENT_NOM = "ENTREPRISE DEMO SARL"
 DEMO_USER_EMAIL = "client@demo.local"
 DEMO_USER_PASSWORD = "demo1234"
+DEMO_GESTIONNAIRE_EMAIL = "gestionnaire@demo.local"
+DEMO_GESTIONNAIRE_PASSWORD = "gest1234"
 
 # (compte, designation, be_debit, be_credit, mvt_debit, mvt_credit, bs_debit, bs_credit)
 BALANCE_N = [
@@ -57,13 +59,28 @@ BALANCE_N1 = _scale(BALANCE_N, 0.85)
 def run():
     conn = db.get_conn()
     try:
+        # --- Créer le gestionnaire de démo ---
+        gest = conn.execute(
+            "SELECT * FROM users WHERE email=?", (DEMO_GESTIONNAIRE_EMAIL,)
+        ).fetchone()
+        if gest is None:
+            db.create_user(conn, DEMO_GESTIONNAIRE_EMAIL, DEMO_GESTIONNAIRE_PASSWORD, "gestionnaire", None)
+            conn.commit()
+            gest = conn.execute(
+                "SELECT * FROM users WHERE email=?", (DEMO_GESTIONNAIRE_EMAIL,)
+            ).fetchone()
+            print("Compte gestionnaire de démo créé :", DEMO_GESTIONNAIRE_EMAIL, "/", DEMO_GESTIONNAIRE_PASSWORD)
+
+        gestionnaire_id = gest["id"]
+
+        # --- Créer le client de démo (rattaché au gestionnaire) ---
         client = conn.execute(
             "SELECT * FROM clients WHERE raison_sociale=?", (DEMO_CLIENT_NOM,)
         ).fetchone()
         if client is None:
             cur = conn.execute(
-                "INSERT INTO clients (raison_sociale, ncc, ntd, adresse) VALUES (?,?,?,?)",
-                (DEMO_CLIENT_NOM, "1234567A", "987654321", "Abidjan, Côte d'Ivoire (démo)"),
+                "INSERT INTO clients (raison_sociale, ncc, ntd, adresse, created_by) VALUES (?,?,?,?,?)",
+                (DEMO_CLIENT_NOM, "1234567A", "987654321", "Abidjan, Côte d'Ivoire (démo)", gestionnaire_id),
             )
             client_id = cur.lastrowid
             conn.commit()

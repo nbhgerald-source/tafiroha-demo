@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS clients (
     ncc TEXT,
     ntd TEXT,
     adresse TEXT,
+    created_by INTEGER,  -- id du gestionnaire créateur (NULL si créé par admin)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -22,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('admin','client')),
+    role TEXT NOT NULL CHECK(role IN ('admin','gestionnaire','client')),
     client_id INTEGER REFERENCES clients(id),
     created_at TEXT DEFAULT (datetime('now'))
 );

@@ -133,7 +133,19 @@
   <a href="/">TAFIROHA en ligne</a>
   <nav>
     {% if user %}
-      <span class="pill">{{ user['email'] }} · {{ 'Cabinet' if user['role']=='admin' else 'Client' }}</span>
+      <span class="pill">{{ user['email'] }} ·
+        {% if user['role'] == 'admin' %}Cabinet
+        {% elif user['role'] == 'gestionnaire' %}Gestionnaire
+        {% else %}Client{% endif %}
+      </span>
+      {% if user['role'] == 'gestionnaire' %}
+        <a href="/gestionnaire">Mes clients</a>
+        <a href="/gestionnaire/clients/new">+ Nouveau client</a>
+      {% elif user['role'] == 'admin' %}
+        <a href="/admin">Tableau de bord</a>
+        <a href="/admin/clients/new">+ Client</a>
+        <a href="/admin/gestionnaires/new">+ Gestionnaire</a>
+      {% endif %}
       <a href="/logout">Déconnexion</a>
     {% endif %}
   </nav>

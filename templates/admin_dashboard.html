@@ -4,19 +4,21 @@
   <h2>Tableau de bord cabinet</h2>
   <p class="muted">Vue d'ensemble de tous les clients et de leurs exercices.</p>
   <a class="btn" href="/admin/clients/new">+ Nouveau client</a>
+  <a class="btn" href="/admin/gestionnaires/new" style="margin-left:8px;background:#0e6655;">+ Nouveau gestionnaire</a>
 </div>
 <div class="card">
   <table>
-    <tr><th>Client</th><th>NCC</th><th>Exercices</th><th></th></tr>
+    <tr><th>Client</th><th>NCC</th><th>Gestionnaire</th><th>Exercices</th><th></th></tr>
     {% for c in clients %}
     <tr>
       <td>{{ c['raison_sociale'] }}</td>
       <td>{{ c['ncc'] or '—' }}</td>
+      <td>{{ c['gestionnaire_email'] or '<span class="muted">Admin</span>' }}</td>
       <td>{{ counts[c['id']] }}</td>
       <td><a href="/client/{{ c['id'] }}">Ouvrir →</a></td>
     </tr>
     {% else %}
-    <tr><td colspan="4" class="muted">Aucun client pour l'instant.</td></tr>
+    <tr><td colspan="5" class="muted">Aucun client pour l'instant.</td></tr>
     {% endfor %}
   </table>
 </div>

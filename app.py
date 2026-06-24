@@ -3534,7 +3534,12 @@ def view_login(req, conn):
         row = conn.execute("SELECT * FROM users WHERE lower(email)=?", (email,)).fetchone()
         if row and db.verify_password(password, row["password_hash"]):
             token = db.create_session(conn, row["id"])
-            dest = "/admin" if row["role"] == "admin" else "/client/%d" % row["client_id"]
+            if row["role"] == "admin":
+                dest = "/admin"
+            elif row["role"] == "gestionnaire":
+                dest = "/gestionnaire"
+            else:
+                dest = "/client/%d" % row["client_id"]
             return redirect(dest, set_cookie=token)
         error = "Identifiants invalides."
     return Response(render("login.html", error=error))
@@ -3549,7 +3554,12 @@ def view_logout(req, conn):
 def view_admin_dashboard(req, conn, user):
     if user["role"] != "admin":
         return Response("Accès refusé", status="403 Forbidden")
-    clients = conn.execute("SELECT * FROM clients ORDER BY raison_sociale").fetchall()
+    clients = conn.execute(
+        "SELECT c.*, u.email as gestionnaire_email "
+        "FROM clients c "
+        "LEFT JOIN users u ON u.id = c.created_by "
+        "ORDER BY c.raison_sociale"
+    ).fetchall()
     counts = {}
     for c in clients:
         n = conn.execute("SELECT COUNT(*) c FROM exercices WHERE client_id=?", (c["id"],)).fetchone()["c"]
@@ -3558,7 +3568,7 @@ def view_admin_dashboard(req, conn, user):
 
 
 def view_client_new(req, conn, user):
-    if user["role"] != "admin":
+    if user["role"] not in ("admin", "gestionnaire"):
         return Response("Accès refusé", status="403 Forbidden")
     error = None
     if req.method == "POST":
@@ -3575,23 +3585,31 @@ def view_client_new(req, conn, user):
             if existing:
                 error = "Cet email est déjà utilisé."
             else:
+                # created_by = id du gestionnaire, ou NULL si admin
+                created_by = user["id"] if user["role"] == "gestionnaire" else None
                 cur = conn.execute(
-                    "INSERT INTO clients (raison_sociale, ncc, ntd, adresse) VALUES (?,?,?,?)",
-                    (raison, ncc, ntd, adresse),
+                    "INSERT INTO clients (raison_sociale, ncc, ntd, adresse, created_by) VALUES (?,?,?,?,?)",
+                    (raison, ncc, ntd, adresse, created_by),
                 )
                 client_id = cur.lastrowid
                 db.create_user(conn, email, password, "client", client_id)
                 conn.commit()
+                if user["role"] == "gestionnaire":
+                    return redirect("/gestionnaire")
                 return redirect("/client/%d" % client_id)
     return Response(render("client_new.html", user=user, error=error))
 
 
 def view_client_dashboard(req, conn, user, client_id):
-    if user["role"] != "admin" and user["client_id"] != client_id:
-        return Response("Accès refusé", status="403 Forbidden")
     client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
     if not client:
         return Response("Client introuvable", status="404 Not Found")
+    # Accès : admin, gestionnaire créateur du client, ou client lui-même
+    is_admin = user["role"] == "admin"
+    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
+    is_client = user["role"] == "client" and user["client_id"] == client_id
+    if not (is_admin or is_owner_gestionnaire or is_client):
+        return Response("Accès refusé", status="403 Forbidden")
     exercices = conn.execute(
         "SELECT * FROM exercices WHERE client_id=? ORDER BY annee DESC", (client_id,)
     ).fetchall()
@@ -3599,7 +3617,13 @@ def view_client_dashboard(req, conn, user, client_id):
 
 
 def view_exercice_new(req, conn, user, client_id):
-    if user["role"] != "admin" and user["client_id"] != client_id:
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
+    if not client:
+        return Response("Client introuvable", status="404 Not Found")
+    is_admin = user["role"] == "admin"
+    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
+    is_client = user["role"] == "client" and user["client_id"] == client_id
+    if not (is_admin or is_owner_gestionnaire or is_client):
         return Response("Accès refusé", status="403 Forbidden")
     error = None
     if req.method == "POST":
@@ -3630,7 +3654,10 @@ def view_exercice(req, conn, user, exercice_id):
     if not exo:
         return Response("Exercice introuvable", status="404 Not Found")
     client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
-    if user["role"] != "admin" and user["client_id"] != client["id"]:
+    is_admin = user["role"] == "admin"
+    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
+    is_client = user["role"] == "client" and user["client_id"] == client["id"]
+    if not (is_admin or is_owner_gestionnaire or is_client):
         return Response("Accès refusé", status="403 Forbidden")
 
     upload_msg = None
@@ -3969,6 +3996,42 @@ def view_static(req, conn, filename):
     )
 
 
+def view_gestionnaire_dashboard(req, conn, user):
+    """Tableau de bord du gestionnaire : ne voit que ses propres clients."""
+    if user["role"] != "gestionnaire":
+        return Response("Accès refusé", status="403 Forbidden")
+    clients = conn.execute(
+        "SELECT * FROM clients WHERE created_by=? ORDER BY raison_sociale",
+        (user["id"],)
+    ).fetchall()
+    counts = {}
+    for c in clients:
+        n = conn.execute("SELECT COUNT(*) c FROM exercices WHERE client_id=?", (c["id"],)).fetchone()["c"]
+        counts[c["id"]] = n
+    return Response(render("gestionnaire_dashboard.html", user=user, clients=clients, counts=counts))
+
+
+def view_gestionnaire_new(req, conn, user):
+    """Créer un compte gestionnaire (réservé à l'admin)."""
+    if user["role"] != "admin":
+        return Response("Accès refusé", status="403 Forbidden")
+    error = None
+    if req.method == "POST":
+        email = req.form.get("email", "").strip().lower()
+        password = req.form.get("password", "").strip()
+        if not email or not password:
+            error = "Email et mot de passe sont obligatoires."
+        else:
+            existing = conn.execute("SELECT id FROM users WHERE lower(email)=?", (email,)).fetchone()
+            if existing:
+                error = "Cet email est déjà utilisé."
+            else:
+                db.create_user(conn, email, password, "gestionnaire", None)
+                conn.commit()
+                return redirect("/admin")
+    return Response(render("gestionnaire_new.html", user=user, error=error))
+
+
 def dispatch(req, conn):
     path = req.path.rstrip("/") or "/"
 
@@ -3987,12 +4050,26 @@ def dispatch(req, conn):
         return view_static(req, conn, path[len("/static/"):])
 
     if path == "/" or path == "":
-        return redirect("/admin" if user["role"] == "admin" else "/client/%d" % user["client_id"])
+        if user["role"] == "admin":
+            return redirect("/admin")
+        elif user["role"] == "gestionnaire":
+            return redirect("/gestionnaire")
+        else:
+            return redirect("/client/%d" % user["client_id"])
 
     if path == "/admin":
         return view_admin_dashboard(req, conn, user)
 
     if path == "/admin/clients/new":
+        return view_client_new(req, conn, user)
+
+    if path == "/admin/gestionnaires/new":
+        return view_gestionnaire_new(req, conn, user)
+
+    if path == "/gestionnaire":
+        return view_gestionnaire_dashboard(req, conn, user)
+
+    if path == "/gestionnaire/clients/new":
         return view_client_new(req, conn, user)
 
     if path.startswith("/client/") and path.endswith("/exercices/new"):
