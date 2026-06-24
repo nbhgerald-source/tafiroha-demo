@@ -196,4 +196,24 @@ var tafirohaHiddenIds = {{ hidden_card_ids|default([]) }};
   var pageNo = 0;
   cards.forEach(function (card) {
     if (excludedIds.indexOf(card.id) !== -1) { return; }
-    if (inactiveIds.indexOf(card.id) 
+    if (inactiveIds.indexOf(card.id) !== -1) { return; }
+    if (card.querySelector(':scope > .tafiroha-entete')) { return; }
+    pageNo += 1;
+    var div = document.createElement('div');
+    div.className = 'tafiroha-entete';
+    div.innerHTML =
+      '<div class="te-row1"><span>- ' + pageNo + ' -</span></div>' +
+      '<div class="te-grid">' +
+        '<div><b>Dénomination sociale de l\'entité :</b> ' + entete.denomination + '</div>' +
+        '<div><b>Sigle usuel :</b> ' + entete.sigle + '</div>' +
+        '<div><b>Adresse :</b> ' + entete.adresse + '</div>' +
+        '<div><b>N° de compte contribuable (NCC) :</b> ' + entete.ncc + '</div>' +
+        '<div><b>Exercice clos le :</b> ' + entete.exerciceClosLe + '  —  <b>Durée (en mois) :</b> ' + entete.dureeMois + '</div>' +
+        '<div><b>N° de télédéclarant (NTD) :</b> ' + entete.ntd + '</div>' +
+      '</div>';
+    card.insertBefore(div, card.firstChild);
+  });
+})();
+</script>
+</body>
+</html>
