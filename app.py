@@ -4032,6 +4032,22 @@ def view_gestionnaire_new(req, conn, user):
     return Response(render("gestionnaire_new.html", user=user, error=error))
 
 
+def view_gestionnaires(req, conn, user):
+    """Liste des gestionnaires et du nombre de clients créés par chacun (admin uniquement)."""
+    if user["role"] != "admin":
+        return Response("Accès refusé", status="403 Forbidden")
+    gestionnaires = conn.execute(
+        "SELECT * FROM users WHERE role='gestionnaire' ORDER BY email"
+    ).fetchall()
+    counts = {}
+    for g in gestionnaires:
+        n = conn.execute(
+            "SELECT COUNT(*) c FROM clients WHERE created_by=?", (g["id"],)
+        ).fetchone()["c"]
+        counts[g["id"]] = n
+    return Response(render("gestionnaires.html", user=user, gestionnaires=gestionnaires, counts=counts))
+
+
 def dispatch(req, conn):
     path = req.path.rstrip("/") or "/"
 
@@ -4065,6 +4081,9 @@ def dispatch(req, conn):
 
     if path == "/admin/gestionnaires/new":
         return view_gestionnaire_new(req, conn, user)
+
+    if path == "/admin/gestionnaires":
+        return view_gestionnaires(req, conn, user)
 
     if path == "/gestionnaire":
         return view_gestionnaire_dashboard(req, conn, user)

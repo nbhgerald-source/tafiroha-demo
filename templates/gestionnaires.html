@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Gestionnaires</h2>
+  <p class="muted">Un gestionnaire (collaborateur du cabinet) peut créer ses propres clients, mais ne voit jamais les clients créés par les autres gestionnaires ou directement par le cabinet.</p>
+  <a class="btn" href="/admin/gestionnaires/new">+ Nouveau gestionnaire</a>
+  <a href="/admin" style="margin-left:12px;">← Retour</a>
+</div>
+<div class="card">
+  <table>
+    <tr><th>Email</th><th>Clients créés</th></tr>
+    {% for g in gestionnaires %}
+    <tr>
+      <td>{{ g['email'] }}</td>
+      <td>{{ counts[g['id']] }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="2" class="muted">Aucun gestionnaire pour l'instant.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
