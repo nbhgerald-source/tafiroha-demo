@@ -3799,6 +3799,16 @@ def view_exercice(req, conn, user, exercice_id):
         for i in range(n_banques)
     ]
 
+    # FICHE R3 — "Dirigeants" et "Membres du Conseil d'Administration" :
+    # mêmes tableaux à lignes dynamiques que la Fiche R1 (Banque/N° compte),
+    # un compteur "+ Ajouter une ligne" indépendant par sous-groupe.
+    n_dirigeants = int(ce._num(note3_manual.get("FICHE R3", {}).get(
+        "_N_DIRIGEANT", FICHE_R3_DIRIGEANTS_ROWS))) or FICHE_R3_DIRIGEANTS_ROWS
+    n_admin = int(ce._num(note3_manual.get("FICHE R3", {}).get(
+        "_N_ADMIN", FICHE_R3_ADMIN_ROWS))) or FICHE_R3_ADMIN_ROWS
+    fiche_r3_dirigeants_rows = range(1, n_dirigeants + 1)
+    fiche_r3_admin_rows = range(1, n_admin + 1)
+
     return Response(render(
         "exercice_view.html", user=user, client=client, exo=exo, exo_duree_mois=exo_duree_mois,
         balN=balN, balN1=balN1, tftn=tftn, tftn1=tftn1, upload_msg=upload_msg,
@@ -3842,8 +3852,8 @@ def view_exercice(req, conn, user, exercice_id):
         fiche_r1=fiche_r1, fiche_r1_champs=FICHE_R1_CHAMPS, fiche_r1_banques=fiche_r1_banques,
         fiche_r2=fiche_r2, fiche_r3=fiche_r3,
         fiche_r2_activites_rows=range(1, FICHE_R2_ACTIVITES_ROWS + 1),
-        fiche_r3_dirigeants_rows=range(1, FICHE_R3_DIRIGEANTS_ROWS + 1),
-        fiche_r3_admin_rows=range(1, FICHE_R3_ADMIN_ROWS + 1),
+        fiche_r3_dirigeants_rows=fiche_r3_dirigeants_rows,
+        fiche_r3_admin_rows=fiche_r3_admin_rows,
     ))
 
 
