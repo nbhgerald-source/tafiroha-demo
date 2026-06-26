@@ -496,8 +496,18 @@
     </table>
     <p class="muted">(Dénomination, adresse, NCC, NTD sont gérés au niveau de la fiche client — cf. page Clients.)</p>
     {% for champ, label in sommaire_champs %}
+    {% if champ in sommaire_select_champs %}
+    <p><label>{{ label }}</label>
+    <select name="texte_{{ champ }}">
+      <option value=""></option>
+      {% for choix in sommaire_select_champs[champ] %}
+      <option value="{{ choix }}" {% if sommaire_info.get(champ, '') == choix %}selected{% endif %}>{{ choix }}</option>
+      {% endfor %}
+    </select></p>
+    {% else %}
     <p><label>{{ label }}</label>
     <input type="text" name="texte_{{ champ }}" value="{{ sommaire_info.get(champ, '') }}"></p>
+    {% endif %}
     {% endfor %}
     <button class="btn" type="submit">Enregistrer l'identification</button>
   </form>
@@ -687,26 +697,43 @@
 <div class="card" id="fiche-r2">
   <h3>FICHE R2 — Identification et renseignements divers 2</h3>
   <table>
-    <tr><td>Forme juridique (Note 36)</td><td>{{ sommaire_info.get('forme_juridique', '') }}</td></tr>
-    <tr><td>Régime fiscal (Note 36)</td><td>{{ sommaire_info.get('regime_fiscal', '') }}</td></tr>
-    <tr><td>Pays du siège social (Note 36)</td><td>{{ sommaire_info.get('pays_siege', '') }}</td></tr>
+    <tr><td>ZX</td><td>Forme juridique (1)</td><td>{{ sommaire_info.get('forme_juridique', '') }}</td><td>Code : {{ fiche_r2_zx }}</td></tr>
+    <tr><td>ZY</td><td>Régime fiscal (1)</td><td>{{ sommaire_info.get('regime_fiscal', '') }}</td><td>Code : {{ fiche_r2_zy }}</td></tr>
+    <tr><td>ZZ1</td><td>Pays du siège social (1)</td><td>{{ sommaire_info.get('pays_siege', '') }}</td><td>Code : {{ fiche_r2_zz1 }}</td></tr>
+    <tr><td>ZZ4</td><td>Première année d'exercice dans le pays</td><td colspan="2">{{ fiche_r2_premiere_annee }}</td></tr>
   </table>
+  <p class="muted">(1) Note 36 (TABLE DES CODES). Ces valeurs et codes sont repris automatiquement de la feuille SOMMAIRE — pour les modifier, voir la feuille SOMMAIRE.</p>
   <form method="post" action="#fiche-r2">
     <input type="hidden" name="note_texte_sheet" value="FICHE R2">
+    <h4>Contrôle de l'Entité</h4>
+    <p><label>Veuillez sélectionner le type de contrôle dans la liste</label>
+    <select name="texte_type_controle">
+      <option value=""></option>
+      {% for choix in type_controle_choices %}
+      <option value="{{ choix }}" {% if fiche_r2.get('type_controle', '') == choix %}selected{% endif %}>{{ choix }}</option>
+      {% endfor %}
+    </select></p>
     <p><label>Nombre d'établissements dans le pays</label>
     <input type="text" name="texte_nb_etabl_pays" value="{{ fiche_r2.get('nb_etabl_pays', '') }}"></p>
     <p><label>Nombre d'établissements hors du pays (comptabilité distincte)</label>
     <input type="text" name="texte_nb_etabl_hors_pays" value="{{ fiche_r2.get('nb_etabl_hors_pays', '') }}"></p>
     <h4>Activité de l'entité (désignation par ordre décroissant de CA HT ou VA, et code nomenclature — Note 36 suite)</h4>
     <table>
-      <tr><th>Désignation de l'activité</th><th>CA HT / VA</th><th>Code nomenclature</th></tr>
+      <tr><th>Désignation de l'activité</th><th>CA HT / VA</th><th>Code nomenclature</th><th>% activité dans le CA HT ou la VA</th></tr>
       {% for i in fiche_r2_activites_rows %}
       <tr>
         <td><input type="text" name="texte_activite_{{ i }}_designation" value="{{ fiche_r2.get('activite_%d_designation' % i, '') }}" placeholder="{{ 'Divers' if i == (fiche_r2_activites_rows|last) else '' }}"></td>
         <td><input type="text" size="12" name="texte_activite_{{ i }}_montant" value="{{ fiche_r2.get('activite_%d_montant' % i, '') }}"></td>
         <td><input type="text" size="12" name="texte_activite_{{ i }}_code" value="{{ fiche_r2.get('activite_%d_code' % i, '') }}"></td>
+        <td>{{ ('%.2f'|format(fiche_r2_activite_pct[i])) ~ ' %' if fiche_r2_activite_pct[i] is not none else '' }}</td>
       </tr>
       {% endfor %}
+      <tr>
+        <td><strong>TOTAL</strong></td>
+        <td><strong>{{ fiche_r2_activite_total }}</strong></td>
+        <td></td>
+        <td><strong>{{ '100,00 %' if fiche_r2_activite_total else '' }}</strong></td>
+      </tr>
     </table>
     <button class="btn" type="submit">Enregistrer</button>
   </form>

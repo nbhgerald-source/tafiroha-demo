@@ -1546,6 +1546,51 @@ SOMMAIRE_CHAMPS = [
 ]
 
 # ----------------------------------------------------------------------------
+# Listes déroulantes pour les champs SOMMAIRE qui ont une liste fermée dans le
+# classeur d'origine (feuille "Code" : tables FormeJuridique, RegimeFiscal,
+# PaysSiege, et le Oui/Non d'Agrément prioritaire). La valeur enregistrée est
+# le libellé (cohérent avec les fiches R1/R2 qui affichent le libellé), le
+# code numérique d'origine est juste informatif ici.
+OUI_NON_CHOICES = ["Oui", "Non"]
+
+FORME_JURIDIQUE_CHOICES = [
+    "SA publique", "SA", "SAS", "SARL", "SCS", "SNC", "SP", "GIE",
+    "Association", "Autre forme juridique",
+]
+
+REGIME_FISCAL_CHOICES = ["Réel normal", "Réel simplifié", "Synthétique", "Forfait"]
+
+PAYS_SIEGE_CHOICES = [
+    "Bénin", "Burkina", "Cameroun", "Centrafrique", "Comores", "Congo",
+    "Côte d'Ivoire", "Gabon", "Guinée Bissau", "Guinée Conakry",
+    "Guinée Equatoriale", "Mali", "Niger", "Sénégal", "Tchad", "Togo",
+    "Afrique du Sud", "Autres pays africains", "Suisse", "France",
+    "Autres pays de l'Union Européenne", "U.S.A.", "Canada", "Brésil",
+    "Autres pays américains", "Chine", "Inde", "Liban",
+    "Autres pays asiatiques", "Russie", "Autres pays",
+]
+
+# Code statistique à 2 chiffres par pays (feuille "Code", table PaysSiege,
+# colonnes 1+2 concaténées) — sert à calculer ZZ1 sur FICHE R2 (Q13).
+PAYS_SIEGE_CODES = {
+    "Bénin": "01", "Burkina": "02", "Cameroun": "09", "Centrafrique": "10",
+    "Comores": "15", "Congo": "11", "Côte d'Ivoire": "03", "Gabon": "12",
+    "Guinée Bissau": "04", "Guinée Conakry": "16", "Guinée Equatoriale": "13",
+    "Mali": "05", "Niger": "06", "Sénégal": "07", "Tchad": "14", "Togo": "08",
+    "Afrique du Sud": "20", "Autres pays africains": "21", "Suisse": "22",
+    "France": "23", "Autres pays de l'Union Européenne": "39", "U.S.A.": "40",
+    "Canada": "41", "Brésil": "43", "Autres pays américains": "49",
+    "Chine": "50", "Inde": "52", "Liban": "53", "Autres pays asiatiques": "59",
+    "Russie": "60", "Autres pays": "99",
+}
+
+TYPE_CONTROLE_CHOICES = [
+    "Entité sous contrôle public",
+    "Entité sous contrôle privé national",
+    "Entité sous contrôle privé étranger",
+]
+
+# ----------------------------------------------------------------------------
 # GARDE : page de garde proprement dite. Tous ses champs d'identite sont des
 # formules pointant vers Sommaire (donc en lecture seule ici, voir SOMMAIRE_
 # CHAMPS ci-dessus) ; les seuls champs propres a GARDE sont la liste des
@@ -3812,6 +3857,42 @@ def view_exercice(req, conn, user, exercice_id):
     fiche_r2 = note_texte.get("FICHE R2", {})
     fiche_r3 = note_texte.get("FICHE R3", {})
 
+    # FICHE R2 — codes statistiques ZX/ZY/ZZ1 (Forme juridique, Régime
+    # fiscal, Pays du siège social) recalculés à partir des choix faits sur
+    # SOMMAIRE, comme dans le classeur d'origine (Q9/Q11/Q13 = INDEX/MATCH
+    # sur les tables Code!FormeJuridique/RegimeFiscal/PaysSiege). Le champ
+    # "Contrôle de l'Entité" (ZX dans le libellé mais une saisie indépendante
+    # côté FICHE R2!W11) est lui une saisie manuelle classique (texte_*).
+    fiche_r2_zx = ""
+    forme_label = sommaire_info.get("forme_juridique", "")
+    if forme_label in FORME_JURIDIQUE_CHOICES:
+        agrement_flag = "1" if sommaire_info.get("agrement_prioritaire") == "Oui" else "0"
+        forme_code = str(FORME_JURIDIQUE_CHOICES.index(forme_label))
+        fiche_r2_zx = agrement_flag + forme_code
+
+    fiche_r2_zy = ""
+    regime_label = sommaire_info.get("regime_fiscal", "")
+    if regime_label in REGIME_FISCAL_CHOICES:
+        fiche_r2_zy = str(REGIME_FISCAL_CHOICES.index(regime_label) + 1)
+
+    fiche_r2_zz1 = PAYS_SIEGE_CODES.get(sommaire_info.get("pays_siege", ""), "")
+
+    fiche_r2_premiere_annee = sommaire_info.get("annee_premier_exercice", "")
+
+    # Tableau "Activité de l'entité" : % de chaque activité = montant/total
+    # (Excel AH28=IFERROR(Y28/$Y$30,"")), + ligne TOTAL (Y30/AH30).
+    fiche_r2_activite_montants = {
+        i: ce._num(fiche_r2.get("activite_%d_montant" % i, ""))
+        for i in range(1, FICHE_R2_ACTIVITES_ROWS + 1)
+    }
+    fiche_r2_activite_total = sum(fiche_r2_activite_montants.values())
+    fiche_r2_activite_pct = {}
+    for i, montant in fiche_r2_activite_montants.items():
+        if fiche_r2_activite_total:
+            fiche_r2_activite_pct[i] = round(montant / fiche_r2_activite_total * 100, 2)
+        else:
+            fiche_r2_activite_pct[i] = None
+
     # FICHE R1 — "Domiciliations bancaires" : tableau a lignes dynamiques
     # (Banque / N° de compte), meme mecanisme "+ Ajouter une ligne" que les
     # autres notes (compteur "_N_BANQUE" stocke en note3_manual, valeurs en
@@ -3876,9 +3957,20 @@ def view_exercice(req, conn, user, exercice_id):
         hidden_card_ids=hidden_card_ids, fiche_r4_rows=fiche_r4_rows,
         garde=garde, garde_documents=GARDE_DOCUMENTS,
         sommaire_info=sommaire_info, sommaire_champs=SOMMAIRE_CHAMPS,
+        sommaire_select_champs={
+            "agrement_prioritaire": OUI_NON_CHOICES,
+            "forme_juridique": FORME_JURIDIQUE_CHOICES,
+            "regime_fiscal": REGIME_FISCAL_CHOICES,
+            "pays_siege": PAYS_SIEGE_CHOICES,
+        },
         fiche_r1=fiche_r1, fiche_r1_champs=FICHE_R1_CHAMPS, fiche_r1_banques=fiche_r1_banques,
         fiche_r2=fiche_r2, fiche_r3=fiche_r3,
         fiche_r2_activites_rows=range(1, FICHE_R2_ACTIVITES_ROWS + 1),
+        type_controle_choices=TYPE_CONTROLE_CHOICES,
+        fiche_r2_zx=fiche_r2_zx, fiche_r2_zy=fiche_r2_zy, fiche_r2_zz1=fiche_r2_zz1,
+        fiche_r2_premiere_annee=fiche_r2_premiere_annee,
+        fiche_r2_activite_pct=fiche_r2_activite_pct,
+        fiche_r2_activite_total=fiche_r2_activite_total,
         fiche_r3_dirigeants_rows=fiche_r3_dirigeants_rows,
         fiche_r3_admin_rows=fiche_r3_admin_rows,
     ))

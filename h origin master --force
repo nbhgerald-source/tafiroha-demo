@@ -1,0 +1,36 @@
+ HEAD (3)                                           |  Bin [31m0[m -> [32m296[m bytes
+ HEAD (4)                                           |  Bin [31m0[m -> [32m2780[m bytes
+ app.py                                             | 4129 [32m+[m[31m-------------------[m
+ applypatch-msg.sample                              |   42 [32m+[m
+ client_dashboard.html                              |    1 [32m+[m
+ commit-msg.sample                                  |   14 [32m+[m
+ config                                             |  116 [32m+[m
+ db.py                                              |  175 [32m+[m[31m-[m
+ description                                        |   10 [32m+[m
+ exercice_new.html                                  |    1 [32m+[m
+ gestionnaire_new.html                              |    1 [32m+[m
+ index                                              |  Bin [31m0[m -> [32m820671[m bytes
+ master                                             |    2 [32m+[m
+ pack-65162cbb698e6a319c36288dfd8b212e4d70b154.idx  |   24 [32m+[m
+ pack-65162cbb698e6a319c36288dfd8b212e4d70b154.pack |   15 [32m+[m
+ pack-65162cbb698e6a319c36288dfd8b212e4d70b154.rev  |   13 [32m+[m
+ packed-refs                                        |   78 [32m+[m
+ post-update.sample                                 |   53 [32m+[m
+ pre-commit.sample                                  |  174 [32m+[m
+ pre-merge-commit.sample                            |   49 [32m+[m
+ pre-push.sample                                    |    1 [32m+[m
+ pre-rebase.sample                                  |   24 [32m+[m
+ pre-receive.sample                                 |  169 [32m+[m
+ prepare-commit-msg.sample                          |    8 [32m+[m
+ push-to-checkout.sample                            |  128 [32m+[m
+ render.yaml                                        |   13 [32m+[m[31m-[m
+ requirements.txt                                   |    4 [32m+[m[31m-[m
+ seed_demo.py                                       |  130 [32m+[m[31m-[m
+ sendemail-validate.sample                          |   11 [32m+[m
+ templates/admin_dashboard.html                     |    7 [32m+[m[31m-[m
+ templates/base.html                                |   15 [32m+[m[31m-[m
+ templates/gestionnaire_dashboard.html              |   23 [31m-[m
+ templates/gestionnaire_new.html                    |   18 [31m-[m
+ templates/gestionnaires.html                       |   22 [31m-[m
+ update.sample                                      |   77 [32m+[m
+ 35 files changed, 1021 insertions(+), 4526 deletions(-)
