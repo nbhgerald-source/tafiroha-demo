@@ -3661,6 +3661,65 @@ def view_client_dashboard(req, conn, user, client_id):
     return Response(render("client_dashboard.html", user=user, client=client, exercices=exercices))
 
 
+def view_client_users(req, conn, user, client_id):
+    """Gestion des comptes utilisateurs rattachés à un client.
+    Réservée aux rôles admin et gestionnaire (créateur du client)."""
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
+    if not client:
+        return Response("Client introuvable", status="404 Not Found")
+    is_admin = user["role"] == "admin"
+    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
+    if not (is_admin or is_owner_gestionnaire):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    error = None
+    success = None
+
+    # Suppression d'un utilisateur client
+    if req.method == "POST" and req.form.get("action") == "delete":
+        uid = req.form.get("user_id", "")
+        try:
+            uid = int(uid)
+        except ValueError:
+            uid = None
+        if uid:
+            target = conn.execute(
+                "SELECT * FROM users WHERE id=? AND client_id=? AND role='client'",
+                (uid, client_id),
+            ).fetchone()
+            if target:
+                conn.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
+                conn.execute("DELETE FROM users WHERE id=?", (uid,))
+                conn.commit()
+                success = "Utilisateur supprimé."
+
+    # Ajout d'un nouvel utilisateur pour ce client
+    elif req.method == "POST" and req.form.get("action") == "add":
+        email = req.form.get("email", "").strip().lower()
+        password = req.form.get("password", "").strip()
+        if not email or not password:
+            error = "Email et mot de passe requis."
+        else:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE lower(email)=?", (email,)
+            ).fetchone()
+            if existing:
+                error = "Un compte avec cet email existe déjà."
+            else:
+                db.create_user(conn, email, password, "client", client_id)
+                conn.commit()
+                success = "Utilisateur créé avec succès."
+
+    users_list = conn.execute(
+        "SELECT id, email, created_at FROM users WHERE client_id=? AND role='client' ORDER BY created_at",
+        (client_id,),
+    ).fetchall()
+    return Response(render(
+        "client_users.html",
+        user=user, client=client, users_list=users_list, error=error, success=success,
+    ))
+
+
 def view_exercice_new(req, conn, user, client_id):
     client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
     if not client:
@@ -4182,6 +4241,10 @@ def dispatch(req, conn):
 
     if path == "/gestionnaire/clients/new":
         return view_client_new(req, conn, user)
+
+    if path.startswith("/client/") and path.endswith("/users"):
+        client_id = int(path.split("/")[2])
+        return view_client_users(req, conn, user, client_id)
 
     if path.startswith("/client/") and path.endswith("/exercices/new"):
         client_id = int(path.split("/")[2])

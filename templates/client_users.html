@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>{{ client['raison_sociale'] }} — Utilisateurs</h2>
+  <p class="muted">NCC : {{ client['ncc'] or '—' }} · NTD : {{ client['ntd'] or '—' }}</p>
+  <a href="/client/{{ client['id'] }}">← Retour au tableau de bord</a>
+</div>
+
+{% if error %}<div class="card"><div class="error">{{ error }}</div></div>{% endif %}
+{% if success %}<div class="card"><div class="msg">{{ success }}</div></div>{% endif %}
+
+<div class="card">
+  <h3>Comptes existants</h3>
+  {% if users_list %}
+  <table>
+    <tr>
+      <th>Email</th>
+      <th>Créé le</th>
+      <th></th>
+    </tr>
+    {% for u in users_list %}
+    <tr>
+      <td>{{ u['email'] }}</td>
+      <td class="muted">{{ u['created_at'][:10] if u['created_at'] else '—' }}</td>
+      <td>
+        <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer cet utilisateur ?');">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="user_id" value="{{ u['id'] }}">
+          <button class="btn" type="submit" style="background:#b00020;font-size:12px;padding:4px 10px;">Supprimer</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Aucun utilisateur rattaché à ce client.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="max-width:480px;">
+  <h3>Ajouter un utilisateur</h3>
+  <p class="muted">Ce compte aura accès en lecture/saisie à ce client uniquement.</p>
+  <form method="post">
+    <input type="hidden" name="action" value="add">
+    <label>Email</label>
+    <input type="email" name="email" required autocomplete="off">
+    <label>Mot de passe</label>
+    <input type="password" name="password" required autocomplete="new-password">
+    <button class="btn" type="submit">Créer l'utilisateur</button>
+  </form>
+</div>
+{% endblock %}
