@@ -1424,6 +1424,19 @@
     <button class="btn" type="submit" name="ajouter__N_DETAIL" value="1">+ Ajouter une immobilisation</button>
     <button class="btn" type="submit">Enregistrer la saisie manuelle</button>
   </form>
+  {% if user['role'] != 'client' %}
+  <form method="post" enctype="multipart/form-data"
+        action="/exercice/{{ exo['id'] }}/import-suppl4"
+        style="margin-top:14px;padding-top:14px;border-top:1px solid #e0e0e0;"
+        onsubmit="return confirm('Importer ce fichier remplacera toutes les immobilisations existantes dans SUPPL4. Continuer ?');">
+    <strong>Importer depuis un fichier Excel</strong>
+    <span class="muted" style="margin-left:6px;">Fichier au format Inventaire_immobilisation_Import.xlsx</span><br>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+      <input type="file" name="fichier_suppl4" accept=".xlsx" required>
+      <button class="btn" type="submit" style="flex-shrink:0;">⬆ Importer</button>
+    </div>
+  </form>
+  {% endif %}
 </div>
 
 {{ dgi_simple_table("SUPPL5", "suppl5", "ÉTAT SUPPLÉMENTAIRE N°5 — DÉTAIL DES FRAIS ACCESSOIRES SUR ACHATS (DGI-INS)", suppl5) }}

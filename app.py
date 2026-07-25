@@ -4275,6 +4275,127 @@ def view_export_xml(req, conn, user, exercice_id):
     )
 
 
+# ─── Import xlsx → SUPPL4 ────────────────────────────────────────────────────
+
+def _parse_suppl4_xlsx(file_bytes: bytes):
+    """Parse le fichier xlsx d'inventaire des immobilisations."""
+    import io, datetime
+    try:
+        import openpyxl
+    except ImportError:
+        raise RuntimeError("openpyxl non disponible")
+
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    ws = wb.active
+
+    def _num(v):
+        if v is None: return ""
+        try:
+            f = float(v)
+            return int(f) if f == int(f) else f
+        except (TypeError, ValueError): return ""
+
+    def _txt(v):
+        return "" if v is None else str(v).strip()
+
+    def _date(v):
+        if v is None: return ""
+        if isinstance(v, (datetime.datetime, datetime.date)):
+            return v.strftime("%d/%m/%Y")
+        return str(v).strip()
+
+    rows = []
+    for row in ws.iter_rows(min_row=4, values_only=True):
+        compte    = _txt(row[0])
+        desig     = _txt(row[1])
+        taux      = _num(row[4])
+        date_svc  = _date(row[5])
+        valeur    = _num(row[6])
+        amort_ant = _num(row[7])
+        amort_exo = _num(row[8])
+        prix_ces  = _num(row[11])
+        if compte.upper() == "TOTAL":
+            continue
+        if not any([compte, desig, taux != "", valeur != "", amort_ant != "", amort_exo != ""]):
+            continue
+        rows.append({
+            "compte": compte, "desig": desig,
+            "taux": taux, "date": date_svc,
+            "valeur": valeur, "amort_ant": amort_ant,
+            "amort_exo": amort_exo, "prix_ces": prix_ces,
+        })
+    return rows
+
+
+def view_import_suppl4(req, conn, user, exercice_id):
+    """Importe un fichier xlsx Inventaire_immobilisation vers SUPPL4."""
+    exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
+    if not exo:
+        return Response("Exercice introuvable", status="404 Not Found")
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
+    is_admin = user["role"] == "admin"
+    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
+    if not (is_admin or is_owner_gestionnaire):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    if req.method != "POST":
+        return redirect("/exercice/%d#suppl4" % exercice_id)
+
+    raw_body = req._raw_body if hasattr(req, "_raw_body") else b""
+    content_type = req.environ.get("CONTENT_TYPE", "")
+    file_bytes = None
+
+    if "multipart/form-data" in content_type:
+        boundary = None
+        for part in content_type.split(";"):
+            part = part.strip()
+            if part.startswith("boundary="):
+                boundary = part[9:].strip().encode()
+        if boundary:
+            parts = raw_body.split(b"--" + boundary)
+            for part in parts:
+                if b'name="fichier_suppl4"' in part:
+                    sep = part.find(b"\r\n\r\n")
+                    if sep != -1:
+                        file_bytes = part[sep + 4:].rstrip(b"\r\n--")
+                    break
+
+    if not file_bytes:
+        return redirect("/exercice/%d#suppl4" % exercice_id)
+
+    try:
+        rows = _parse_suppl4_xlsx(file_bytes)
+    except Exception:
+        return redirect("/exercice/%d#suppl4" % exercice_id)
+
+    if not rows:
+        return redirect("/exercice/%d#suppl4" % exercice_id)
+
+    conn.execute("DELETE FROM note3_manuel WHERE exercice_id=? AND sheet='SUPPL4'", (exercice_id,))
+    conn.execute("DELETE FROM note_texte WHERE exercice_id=? AND sheet='SUPPL4'", (exercice_id,))
+    conn.execute(
+        "INSERT INTO note3_manuel (exercice_id, sheet, coord, valeur) VALUES (?,?,?,?)",
+        (exercice_id, "SUPPL4", "_N_DETAIL", len(rows)),
+    )
+    for i, r in enumerate(rows):
+        for champ, val in [("compte_%d" % i, r["compte"]), ("desig_%d" % i, r["desig"]), ("date_%d" % i, r["date"])]:
+            if val:
+                conn.execute(
+                    "INSERT INTO note_texte (exercice_id, sheet, champ, texte) VALUES (?,?,?,?)",
+                    (exercice_id, "SUPPL4", champ, val),
+                )
+        for coord, val in [("D_E_%d" % i, r["taux"]), ("D_G_%d" % i, r["valeur"]),
+                            ("D_H_%d" % i, r["amort_ant"]), ("D_I_%d" % i, r["amort_exo"]),
+                            ("D_L_%d" % i, r["prix_ces"])]:
+            if val != "":
+                conn.execute(
+                    "INSERT INTO note3_manuel (exercice_id, sheet, coord, valeur) VALUES (?,?,?,?)",
+                    (exercice_id, "SUPPL4", coord, val),
+                )
+    conn.commit()
+    return redirect("/exercice/%d#suppl4" % exercice_id)
+
+
 def dispatch(req, conn):
     path = req.path.rstrip("/") or "/"
 
@@ -4333,6 +4454,10 @@ def dispatch(req, conn):
     if path.startswith("/exercice/") and path.endswith("/export.xml"):
         exercice_id = int(path.split("/")[2])
         return view_export_xml(req, conn, user, exercice_id)
+
+    if path.startswith("/exercice/") and path.endswith("/import-suppl4"):
+        exercice_id = int(path.split("/")[2])
+        return view_import_suppl4(req, conn, user, exercice_id)
 
     if path.startswith("/exercice/"):
         exercice_id = int(path.split("/")[2])
