@@ -3721,6 +3721,59 @@ def view_client_users(req, conn, user, client_id):
     ))
 
 
+_COPY_TEXTE_SHEETS  = ("SOMMAIRE", "FICHE R1", "FICHE R2", "FICHE R3")
+_COPY_MANUAL_SHEETS = ("FICHE R1", "FICHE R2", "FICHE R3")
+
+
+def _copy_previous_exercice(conn, new_id: int, client_id: int) -> None:
+    """Copie le sommaire et les fiches R1/R2/R3 du dernier exercice du même client
+    vers le nouvel exercice pour pré-remplir les informations constantes."""
+    prev = conn.execute(
+        "SELECT id FROM exercices WHERE client_id=? AND id != ? ORDER BY annee DESC LIMIT 1",
+        (client_id, new_id),
+    ).fetchone()
+    if not prev:
+        return
+    prev_id = prev["id"]
+
+    # --- note_texte : SOMMAIRE + FICHE R1/R2/R3 ---
+    ph = ",".join("?" * len(_COPY_TEXTE_SHEETS))
+    rows = conn.execute(
+        "SELECT sheet, champ, texte FROM note_texte WHERE exercice_id=? AND sheet IN (%s)" % ph,
+        (prev_id, *_COPY_TEXTE_SHEETS),
+    ).fetchall()
+    for r in rows:
+        conn.execute(
+            "INSERT OR IGNORE INTO note_texte (exercice_id, sheet, champ, texte) VALUES (?,?,?,?)",
+            (new_id, r["sheet"], r["champ"], r["texte"]),
+        )
+
+    # --- note3_manuel : FICHE R1/R2/R3 ---
+    ph2 = ",".join("?" * len(_COPY_MANUAL_SHEETS))
+    rows2 = conn.execute(
+        "SELECT sheet, coord, valeur FROM note3_manuel WHERE exercice_id=? AND sheet IN (%s)" % ph2,
+        (prev_id, *_COPY_MANUAL_SHEETS),
+    ).fetchall()
+    for r in rows2:
+        conn.execute(
+            "INSERT OR IGNORE INTO note3_manuel (exercice_id, sheet, coord, valeur) VALUES (?,?,?,?)",
+            (new_id, r["sheet"], r["coord"], r["valeur"]),
+        )
+
+    # --- sommaire_selection (notes applicables) ---
+    rows3 = conn.execute(
+        "SELECT sheet, applicable FROM sommaire_selection WHERE exercice_id=?",
+        (prev_id,),
+    ).fetchall()
+    for r in rows3:
+        conn.execute(
+            "INSERT OR IGNORE INTO sommaire_selection (exercice_id, sheet, applicable) VALUES (?,?,?)",
+            (new_id, r["sheet"], r["applicable"]),
+        )
+
+    conn.commit()
+
+
 def view_exercice_new(req, conn, user, client_id):
     client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
     if not client:
@@ -3747,8 +3800,9 @@ def view_exercice_new(req, conn, user, client_id):
                     "INSERT INTO exercices (client_id, annee, libelle, date_debut, date_fin) VALUES (?,?,?,?,?)",
                     (client_id, annee, libelle or ("Exercice %d" % annee), date_debut, date_fin),
                 )
-                conn.commit()
-                return redirect("/exercice/%d" % cur.lastrowid)
+                new_id = cur.lastrowid
+                _copy_previous_exercice(conn, new_id, client_id)
+                return redirect("/exercice/%d" % new_id)
             except Exception:
                 error = "Un exercice pour cette année existe déjà."
     return Response(render("exercice_new.html", user=user, client_id=client_id, error=error))
