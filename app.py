@@ -3802,6 +3802,7 @@ def view_exercice_new(req, conn, user, client_id):
                 )
                 new_id = cur.lastrowid
                 _copy_previous_exercice(conn, new_id, client_id)
+                conn.commit()
                 return redirect("/exercice/%d" % new_id)
             except Exception:
                 error = "Un exercice pour cette année existe déjà."
@@ -4184,6 +4185,7 @@ NOT_FOUND = Response("Page introuvable", status="404 Not Found")
 # sécurité : on ne sert que ces fichiers connus, jamais un chemin arbitraire).
 STATIC_FILES = {
     "TAFIROHA-DGI_Import.xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Inventaire_immobilisation_Import.xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
 
