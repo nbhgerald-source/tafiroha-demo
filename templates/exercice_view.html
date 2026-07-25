@@ -344,7 +344,6 @@
 <div class="exercice-layout">
 <nav class="notenav">
   <a href="#import-balance">Balance</a>
-  <a href="#import-tft">Détail TFT</a>
   {% if balN %}
   <a href="#sommaire">Sommaire</a>
   <a href="#sommaire-impression">Sélection impression</a>
@@ -455,30 +454,6 @@
   </form>
 </div>
 
-<div class="card no-print" id="import-tft">
-  <h3>Import du détail TFT (comptes à éclater)</h3>
-  <p class="muted">
-    Optionnel — uniquement si l'entreprise a des mouvements sur les comptes 106, 154, 1984, 4781, 4791,
-    4816, 4817, 4818 (réévaluations, provisions de démantèlement, écarts de conversion, retenues de
-    garantie...). Même format CSV que la balance : compte;designation;be_debit;be_credit;mvt_debit;mvt_credit;bs_debit;bs_credit.
-    {{ tftn|length }} ligne(s) N, {{ tftn1|length }} ligne(s) N-1 déjà chargée(s).
-  </p>
-  <form method="post" enctype="multipart/form-data" class="grid2" action="#import-tft">
-    <div>
-      <label>Période</label>
-      <select name="periode">
-        <option value="N">N (exercice courant)</option>
-        <option value="N1">N-1 (exercice précédent)</option>
-      </select>
-    </div>
-    <div>
-      <label>Fichier CSV</label>
-      <input type="file" name="fichier_tft" accept=".csv" required>
-    </div>
-    <input type="hidden" name="type" value="tft_detail">
-    <div><button class="btn" type="submit">Importer</button></div>
-  </form>
-</div>
 
 {% if balN %}
 <div class="card no-print" id="sommaire">

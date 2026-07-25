@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 tafiroha.db
 .env
+"tafiroha.db-journal" 
+"h origin master --force" 
