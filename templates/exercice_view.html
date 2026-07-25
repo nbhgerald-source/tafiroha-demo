@@ -211,7 +211,7 @@
   <table>
     <tr>
       <th>Rubrique</th>
-      <th>Nature du contrat (I;M;A)</th>
+      <th>Nature du contrat (J;M;A)</th>
       {% for col, label, manual in cols %}<th class="num">{{ label }}</th>{% endfor %}
     </tr>
     {% for r in rows %}
@@ -584,49 +584,527 @@
 
 <div class="card" id="note36-table-des-codes">
   <h3>NOTE 36 — Table des codes</h3>
-  <p class="muted">Tables de référence utilisées pour coder la forme juridique, le régime fiscal et le pays du siège social
-    sur la FICHE R2 (cf. classeur source pour la nomenclature complète).</p>
-  <h4>Forme juridique (extrait)</h4>
+  <p class="muted">Tables de référence utilisées pour coder la forme juridique, le régime fiscal et le pays du siège social sur la FICHE R2.</p>
+
+  <h4>1 — Code forme juridique</h4>
+  <p class="muted">Le code est sur 2 chiffres. Remplacer le premier chiffre par 1 si l'entreprise bénéficie d'un agrément prioritaire (ex. : SA avec agrément = 11).</p>
   <table>
     <tr><th>Code</th><th>Forme juridique</th></tr>
+    <tr><td>00</td><td>Société Anonyme (SA) à participation publique</td></tr>
     <tr><td>01</td><td>Société Anonyme (SA)</td></tr>
-    <tr><td>02</td><td>Société à Responsabilité Limitée (SARL)</td></tr>
-    <tr><td>03</td><td>Société par Actions Simplifiée (SAS)</td></tr>
-    <tr><td>04</td><td>Société en Nom Collectif (SNC)</td></tr>
-    <tr><td>05</td><td>Entreprise individuelle</td></tr>
-    <tr><td>06</td><td>Groupement d'Intérêt Économique (GIE)</td></tr>
-    <tr><td>07</td><td>Autre</td></tr>
+    <tr><td>02</td><td>Société par Actions Simplifiée (SAS)</td></tr>
+    <tr><td>03</td><td>Société à Responsabilité Limitée (SARL)</td></tr>
+    <tr><td>04</td><td>Société en Commandite Simple (SCS)</td></tr>
+    <tr><td>05</td><td>Société en Nom Collectif (SNC)</td></tr>
+    <tr><td>06</td><td>Société en Participation (SP)</td></tr>
+    <tr><td>07</td><td>Groupement d'Intérêt Économique (GIE)</td></tr>
+    <tr><td>08</td><td>Association</td></tr>
+    <tr><td>09</td><td>Autre forme juridique (à préciser)</td></tr>
   </table>
-  <h4>Régime fiscal (extrait)</h4>
+
+  <h4>2 — Code régime fiscal</h4>
   <table>
     <tr><th>Code</th><th>Régime fiscal</th></tr>
-    <tr><td>1</td><td>Réel normal d'imposition</td></tr>
-    <tr><td>2</td><td>Réel simplifié d'imposition</td></tr>
-    <tr><td>3</td><td>Entreprenant / micro-entreprise</td></tr>
+    <tr><td>1</td><td>Réel normal</td></tr>
+    <tr><td>2</td><td>Réel simplifié</td></tr>
+    <tr><td>3</td><td>Synthétique</td></tr>
+    <tr><td>4</td><td>Forfait</td></tr>
   </table>
-  <h4>Pays du siège social (extrait)</h4>
+
+  <h4>3 — Code pays du siège social</h4>
+  <p class="muted">Zone monétaire = Zone franc CFA</p>
   <table>
     <tr><th>Code</th><th>Pays</th></tr>
-    <tr><td>03</td><td>Côte d'Ivoire</td></tr>
+    <tr><td colspan="2" style="font-weight:bold;background:#f5f5f5">Pays UEMOA</td></tr>
     <tr><td>01</td><td>Bénin</td></tr>
     <tr><td>02</td><td>Burkina Faso</td></tr>
-    <tr><td>04</td><td>Mali</td></tr>
-    <tr><td>05</td><td>Sénégal</td></tr>
-    <tr><td>06</td><td>Togo</td></tr>
+    <tr><td>03</td><td>Côte d'Ivoire</td></tr>
+    <tr><td>04</td><td>Guinée Bissau</td></tr>
+    <tr><td>05</td><td>Mali</td></tr>
+    <tr><td>06</td><td>Niger</td></tr>
+    <tr><td>07</td><td>Sénégal</td></tr>
+    <tr><td>08</td><td>Togo</td></tr>
+    <tr><td colspan="2" style="font-weight:bold;background:#f5f5f5">Pays CEMAC</td></tr>
+    <tr><td>09</td><td>Cameroun</td></tr>
+    <tr><td>10</td><td>Centrafrique</td></tr>
+    <tr><td>11</td><td>Congo</td></tr>
+    <tr><td>12</td><td>Gabon</td></tr>
+    <tr><td>13</td><td>Guinée Équatoriale</td></tr>
+    <tr><td>14</td><td>Tchad</td></tr>
+    <tr><td colspan="2" style="font-weight:bold;background:#f5f5f5">Autres pays OHADA</td></tr>
+    <tr><td>15</td><td>Comores</td></tr>
+    <tr><td>16</td><td>Guinée Conakry</td></tr>
+    <tr><td colspan="2" style="font-weight:bold;background:#f5f5f5">Autres pays</td></tr>
+    <tr><td>20</td><td>Afrique du Sud</td></tr>
+    <tr><td>21</td><td>Autres pays africains</td></tr>
+    <tr><td>22</td><td>Suisse</td></tr>
+    <tr><td>23</td><td>France</td></tr>
+    <tr><td>39</td><td>Autres pays de l'Union Européenne</td></tr>
+    <tr><td>40</td><td>U.S.A.</td></tr>
+    <tr><td>41</td><td>Canada</td></tr>
+    <tr><td>43</td><td>Brésil</td></tr>
+    <tr><td>49</td><td>Autres pays américains</td></tr>
+    <tr><td>50</td><td>Chine</td></tr>
+    <tr><td>52</td><td>Inde</td></tr>
+    <tr><td>53</td><td>Liban</td></tr>
+    <tr><td>59</td><td>Autres pays asiatiques</td></tr>
+    <tr><td>60</td><td>Russie</td></tr>
+    <tr><td>99</td><td>Autres pays</td></tr>
   </table>
 </div>
 
 <div class="card" id="note36-suite-nomenclature">
-  <h3>NOTE 36 suite — Nomenclature</h3>
-  <p class="muted">Nomenclature des codes d'activité utilisés en FICHE R2, colonne "Code nomenclature d'activité"
-    (cf. classeur source pour la liste exhaustive des codes sectoriels).</p>
+  <h3>NOTE 36 suite — Classification Ivoirienne des Activités et des Produits (CIAP)</h3>
+  <p class="muted">Sélectionner le ou les codes activités selon le découpage du chiffre d'affaires pour le renseignement de la FICHE R2 dans le tableau "Activité de l'entreprise".</p>
   <table>
-    <tr><th>Code</th><th>Désignation de l'activité</th></tr>
+    <tr><th>Code Activité</th><th>Désignation</th></tr>
+    <tr><td>A0101</td><td>AGRICULTURE VIVRIÈRE</td></tr>
+    <tr><td>A010101</td><td>Culture de céréales</td></tr>
+    <tr><td>A010102</td><td>Culture de tubercules</td></tr>
+    <tr><td>A010103</td><td>Culture de fruits</td></tr>
+    <tr><td>A010104</td><td>Culture de légumes et plantes à épices et aromatiques</td></tr>
+    <tr><td>A0102</td><td>AGRICULTURE DESTINÉE À L'INDUSTRIE OU À L'EXPORTATION</td></tr>
+    <tr><td>A010201</td><td>Culture du cacao</td></tr>
+    <tr><td>A010202</td><td>Culture du café</td></tr>
+    <tr><td>A010203</td><td>Hévéaculture</td></tr>
+    <tr><td>A010204</td><td>Culture du coton</td></tr>
+    <tr><td>A010205</td><td>Culture de la banane douce, de l'ananas et la mangue</td></tr>
+    <tr><td>A010206</td><td>Culture de l'anacarde</td></tr>
+    <tr><td>A010207</td><td>Culture de la canne à sucre</td></tr>
+    <tr><td>A010208</td><td>Culture de graines et fruits oléagineux</td></tr>
+    <tr><td>A010209</td><td>Horticulture et Reproduction des plantes</td></tr>
+    <tr><td>A010210</td><td>Culture d'autres produits destinés à l'industrie ou à l'exportation</td></tr>
+    <tr><td>A0103</td><td>ÉLEVAGE ET CHASSE</td></tr>
+    <tr><td>A010301</td><td>Élevage</td></tr>
+    <tr><td>A010302</td><td>Chasse</td></tr>
+    <tr><td>A0104</td><td>ACTIVITÉS ANNEXES À L'AGRICULTURE, L'ÉLEVAGE ET LA CHASSE</td></tr>
+    <tr><td>A010401</td><td>Activités de soutien à l'agriculture</td></tr>
+    <tr><td>A010402</td><td>Activités de soutien à l'élevage</td></tr>
+    <tr><td>A010403</td><td>Activités de soutien à la chasse</td></tr>
+    <tr><td>A0201</td><td>SYLVICULTURE ET EXPLOITATION FORESTIÈRE</td></tr>
+    <tr><td>A020101</td><td>Sylviculture</td></tr>
+    <tr><td>A020102</td><td>Exploitation Forestière</td></tr>
+    <tr><td>A020103</td><td>Production de charbon de bois</td></tr>
+    <tr><td>A020200</td><td>Cueillettes, récolte de produits forestiers non ligneux</td></tr>
+    <tr><td>A0203</td><td>ACTIVITÉS DE SOUTIEN À LA SYLVICULTURE ET À L'EXPLOITATION FORESTIÈRE</td></tr>
+    <tr><td>A020300</td><td>Activités de soutien à la sylviculture et à l'exploitation forestière</td></tr>
+    <tr><td>A0301</td><td>PÊCHE</td></tr>
+    <tr><td>A030101</td><td>Pêche maritime</td></tr>
+    <tr><td>A030102</td><td>Pêche en eau douce</td></tr>
+    <tr><td>A0302</td><td>AQUACULTURE, PISCICULTURE</td></tr>
+    <tr><td>A030201</td><td>Pisciculture</td></tr>
+    <tr><td>A030202</td><td>Aquaculture</td></tr>
+    <tr><td>B0500</td><td>EXTRACTION DE CHARBON ET DE LIGNITE</td></tr>
+    <tr><td>B050000</td><td>Extraction de charbon et de lignite</td></tr>
+    <tr><td>B0600</td><td>EXTRACTION D'HYDROCARBURES</td></tr>
+    <tr><td>B060001</td><td>Extraction de pétrole brut</td></tr>
+    <tr><td>B060002</td><td>Extraction de gaz naturel</td></tr>
+    <tr><td>B0701</td><td>EXTRACTION DE MINERAIS DE FER</td></tr>
+    <tr><td>B070100</td><td>Extraction de minerais de fer</td></tr>
+    <tr><td>B0702</td><td>EXTRACTION DE MINERAIS DE MÉTAUX NON FERREUX</td></tr>
+    <tr><td>B070201</td><td>Extraction de minerais de métaux précieux</td></tr>
+    <tr><td>B070202</td><td>Extraction d'autres minerais de métaux non ferreux</td></tr>
+    <tr><td>B0801</td><td>EXTRACTION DE PIERRES, DE SABLES ET D'ARGILES</td></tr>
+    <tr><td>B080100</td><td>Extraction de pierres, de sables et d'argiles</td></tr>
+    <tr><td>B0802</td><td>ACTIVITÉS EXTRACTIVES N.C.A.</td></tr>
+    <tr><td>B080201</td><td>Extraction de phosphates et de sels de potassium, naturels</td></tr>
+    <tr><td>B080202</td><td>Extractions de minéraux pour l'industrie chimique</td></tr>
+    <tr><td>B080203</td><td>Extraction ou production de sel et de natron</td></tr>
+    <tr><td>B080204</td><td>Extraction de pierres précieuses et semi-précieuses</td></tr>
+    <tr><td>B080205</td><td>Autres extractions</td></tr>
+    <tr><td>B0901</td><td>ACTIVITÉS DE SOUTIEN À L'EXTRACTION D'HYDROCARBURES</td></tr>
+    <tr><td>B090100</td><td>Activités de soutien à l'extraction d'hydrocarbures</td></tr>
+    <tr><td>B0902</td><td>ACTIVITÉS DE SOUTIEN AUX AUTRES INDUSTRIES EXTRACTIVES</td></tr>
+    <tr><td>B090200</td><td>Activités de soutien aux autres industries extractives</td></tr>
+    <tr><td>C1001</td><td>ABATTAGE, TRANSFORMATION ET CONSERVATION DE LA VIANDE</td></tr>
+    <tr><td>C100101</td><td>Abattage, Transformation et conservation de la viande</td></tr>
+    <tr><td>C100102</td><td>Préparation de produits à base de viande</td></tr>
+    <tr><td>C1002</td><td>TRANSFORMATION ET CONSERVATION DE POISSONS, CRUSTACÉS ET MOLLUSQUES</td></tr>
+    <tr><td>C100201</td><td>Congélation de poissons, crustacés et mollusques</td></tr>
+    <tr><td>C100202</td><td>Séchage, salage ou fumage du poisson</td></tr>
+    <tr><td>C100203</td><td>Autres transformation et conservation des poissons, crustacés et mollusques</td></tr>
+    <tr><td>C1003</td><td>TRANSFORMATION ET CONSERVATION DE FRUITS ET LÉGUMES</td></tr>
+    <tr><td>C100300</td><td>Transformation et conservation de fruits et légumes</td></tr>
+    <tr><td>C1004</td><td>FABRICATION DE CORPS GRAS D'ORIGINE ANIMALE ET VÉGÉTALE</td></tr>
+    <tr><td>C100400</td><td>Fabrication de corps gras d'origine animale et végétale</td></tr>
+    <tr><td>C1005</td><td>TRAVAIL DES GRAINS ; FABRICATION DE PRODUITS AMYLACÉS</td></tr>
+    <tr><td>C100501</td><td>Travail des grains</td></tr>
+    <tr><td>C100502</td><td>Transformation du manioc et fabrication de produits amylacés</td></tr>
+    <tr><td>C1006</td><td>FABRICATION DE PRODUITS ALIMENTAIRES À BASE DE CÉRÉALES N.C.A.</td></tr>
+    <tr><td>C100601</td><td>Fabrication de pain et de pâtisseries fraîches</td></tr>
+    <tr><td>C100602</td><td>Biscuiterie et pâtisserie de conservation</td></tr>
+    <tr><td>C100603</td><td>Fabrication de pâtes alimentaires, de semoules et de produits farineux similaires</td></tr>
+    <tr><td>C1007</td><td>TRANSFORMATION DU CACAO ET DU CAFÉ</td></tr>
+    <tr><td>C100701</td><td>Transformation du cacao</td></tr>
+    <tr><td>C100702</td><td>Transformation du café</td></tr>
+    <tr><td>C1008</td><td>FABRICATION D'AUTRES PRODUITS ALIMENTAIRES</td></tr>
+    <tr><td>C100801</td><td>Fabrication de produits laitiers et de glaces</td></tr>
+    <tr><td>C100802</td><td>Fabrication de sucre et de confiserie</td></tr>
+    <tr><td>C100803</td><td>Fabrication de thé</td></tr>
+    <tr><td>C100804</td><td>Fabrication de condiments et assaisonnements</td></tr>
+    <tr><td>C100805</td><td>Fabrication d'aliments pour animaux</td></tr>
+    <tr><td>C100806</td><td>Fabrication de denrées diverses n.c.a.</td></tr>
+    <tr><td>C1101</td><td>FABRICATION DE BOISSONS ALCOOLISÉES</td></tr>
+    <tr><td>C110101</td><td>Fabrication de malt et de bière</td></tr>
+    <tr><td>C110102</td><td>Fabrication d'autres boissons alcoolisées</td></tr>
+    <tr><td>C1102</td><td>FABRICATION DE BOISSONS NON ALCOOLISÉES ET D'EAUX MINÉRALES</td></tr>
+    <tr><td>C110200</td><td>Fabrication de boissons non alcoolisées et d'eaux minérales</td></tr>
+    <tr><td>C1200</td><td>FABRICATION DE PRODUITS À BASE DE TABAC</td></tr>
+    <tr><td>C120000</td><td>Fabrication de produits à base de tabac</td></tr>
+    <tr><td>C1301</td><td>FILATURE, TISSAGE ET ENNOBLISSEMENT DE TEXTILE</td></tr>
+    <tr><td>C130101</td><td>Filature de textile</td></tr>
+    <tr><td>C130102</td><td>Tissage de textile</td></tr>
+    <tr><td>C130103</td><td>Ennoblissement de textile</td></tr>
+    <tr><td>C1302</td><td>FABRICATION D'AUTRES ARTICLES TEXTILES</td></tr>
+    <tr><td>C130201</td><td>Fabrication de tapis et moquettes</td></tr>
+    <tr><td>C130202</td><td>Fabrication d'étoffes à mailles et d'articles textiles non vestimentaires</td></tr>
+    <tr><td>C1401</td><td>FABRICATION DE VÊTEMENTS</td></tr>
+    <tr><td>C140100</td><td>Fabrication de vêtements</td></tr>
+    <tr><td>C1402</td><td>SERVICE DE COUTURE SUR MESURE</td></tr>
+    <tr><td>C140200</td><td>Service de couture sur mesure</td></tr>
+    <tr><td>C1501</td><td>TRAVAIL DU CUIR ; FABRICATION D'ARTICLES DE VOYAGE</td></tr>
+    <tr><td>C150101</td><td>Apprêt, tannage des cuirs et fourrures</td></tr>
+    <tr><td>C150102</td><td>Fabrication d'articles de voyage, de maroquinerie et de sellerie</td></tr>
+    <tr><td>C1502</td><td>FABRICATION DE CHAUSSURES ET ARTICLES CHAUSSANTS</td></tr>
+    <tr><td>C150200</td><td>Fabrication de chaussures et articles chaussants</td></tr>
+    <tr><td>C1601</td><td>TRAVAIL DU BOIS</td></tr>
+    <tr><td>C160100</td><td>Sciage, Rabotage</td></tr>
+    <tr><td>C1602</td><td>FABRICATION D'ARTICLES EN BOIS, LIÈGE, VANNERIE ET SPARTERIE</td></tr>
+    <tr><td>C160201</td><td>Fabrication de feuilles de placage, de contreplaqués et de panneaux</td></tr>
+    <tr><td>C160202</td><td>Fabrication d'ouvrages de charpente, de menuiseries et d'emballages en bois</td></tr>
+    <tr><td>C160203</td><td>Fabrication d'articles divers en bois ou liège, vannerie et sparterie</td></tr>
+    <tr><td>C1700</td><td>FABRICATION DE PAPIER, CARTONS ET D'ARTICLES EN PAPIER OU EN CARTON</td></tr>
+    <tr><td>C170001</td><td>Fabrication de pâte à papier, de papier et de carton</td></tr>
+    <tr><td>C170002</td><td>Fabrication de carton ondulé et emballages en papier ou en carton</td></tr>
+    <tr><td>C170003</td><td>Fabrication d'articles en papier ou en carton</td></tr>
+    <tr><td>C1801</td><td>IMPRIMERIE ET ACTIVITÉS CONNEXES</td></tr>
+    <tr><td>C180100</td><td>Imprimerie et activités connexes</td></tr>
+    <tr><td>C1802</td><td>REPRODUCTION D'ENREGISTREMENTS</td></tr>
+    <tr><td>C180200</td><td>Reproduction d'enregistrement</td></tr>
+    <tr><td>C1901</td><td>RAFFINAGE DU PÉTROLE</td></tr>
+    <tr><td>C190100</td><td>Raffinage du pétrole</td></tr>
+    <tr><td>C1902</td><td>COKÉFACTION</td></tr>
+    <tr><td>C190200</td><td>Cokéfaction</td></tr>
+    <tr><td>C2001</td><td>FABRICATION DE PRODUITS CHIMIQUES DE BASE</td></tr>
+    <tr><td>C200101</td><td>Fabrication de produits azotés et d'engrais</td></tr>
+    <tr><td>C200102</td><td>Fabrication d'autres produits chimiques de base</td></tr>
+    <tr><td>C2002</td><td>FABRICATION DE PRODUITS CHIMIQUES FONCTIONNELS</td></tr>
+    <tr><td>C200201</td><td>Fabrication de savons, détergents et produits d'entretien</td></tr>
+    <tr><td>C200202</td><td>Fabrication de parfums et de produits de toilette</td></tr>
+    <tr><td>C200203</td><td>Fabrication de produits agrochimiques</td></tr>
+    <tr><td>C200204</td><td>Fabrication de peintures et vernis, adjuvants et encres d'imprimerie</td></tr>
+    <tr><td>C200205</td><td>Fabrication de fibres artificielles ou synthétiques</td></tr>
+    <tr><td>C200206</td><td>Fabrication d'autres produits chimiques</td></tr>
+    <tr><td>C2100</td><td>FABRICATION DE PRODUITS PHARMACEUTIQUES</td></tr>
+    <tr><td>C210001</td><td>Industrie pharmaceutique</td></tr>
+    <tr><td>C210002</td><td>Fabrication de médicaments traditionnels</td></tr>
+    <tr><td>C2201</td><td>TRAVAIL DU CAOUTCHOUC</td></tr>
+    <tr><td>C220101</td><td>Fabrication et rechapage de pneumatiques</td></tr>
+    <tr><td>C220102</td><td>Fabrication d'autres articles en caoutchouc</td></tr>
+    <tr><td>C2202</td><td>TRAVAIL DU PLASTIQUE</td></tr>
+    <tr><td>C220200</td><td>Fabrication d'articles en plastique</td></tr>
+    <tr><td>C2301</td><td>FABRICATION DE VERRE ET D'ARTICLES EN VERRE</td></tr>
+    <tr><td>C230100</td><td>Fabrication de verre et d'articles en verre</td></tr>
+    <tr><td>C2302</td><td>FABRICATION DE PRODUITS CÉRAMIQUES</td></tr>
+    <tr><td>C230201</td><td>Fabrication de carreaux en céramique</td></tr>
+    <tr><td>C230202</td><td>Fabrication de tuiles et briques</td></tr>
+    <tr><td>C230203</td><td>Fabrication d'autres produits céramiques</td></tr>
+    <tr><td>C2303</td><td>FABRICATION DE CIMENTS ET AUTRES PRODUITS MINÉRAUX</td></tr>
+    <tr><td>C230301</td><td>Fabrication de ciment, chaux et plâtre</td></tr>
+    <tr><td>C230302</td><td>Fabrication de matériaux et d'ouvrages en ciment, en béton ou en plâtre ; Travail de la pierre</td></tr>
+    <tr><td>C230303</td><td>Fabrication de produits minéraux non métalliques n.c.a.</td></tr>
+    <tr><td>C2401</td><td>SIDÉRURGIE ET PREMIÈRE TRANSFORMATION DE L'ACIER</td></tr>
+    <tr><td>C240100</td><td>Sidérurgie et première transformation de l'acier</td></tr>
+    <tr><td>C2402</td><td>MÉTALLURGIE ET PREMIÈRE TRANSFORMATION DES MÉTAUX NON FERREUX</td></tr>
+    <tr><td>C240200</td><td>Métallurgie et première transformation des métaux non ferreux</td></tr>
+    <tr><td>C2403</td><td>FONDERIE</td></tr>
+    <tr><td>C240300</td><td>Fonderie</td></tr>
+    <tr><td>C2501</td><td>FABRICATION DE STRUCTURES MÉTALLIQUES, CITERNES ET OUVRAGES CHAUDRONNÉS</td></tr>
+    <tr><td>C250100</td><td>Fabrication de structures métalliques, citernes et ouvrages chaudronnés</td></tr>
+    <tr><td>C2502</td><td>FABRICATION D'AUTRES OUVRAGES EN MÉTAUX ; TRAVAIL DES MÉTAUX</td></tr>
+    <tr><td>C250200</td><td>Fabrication d'autres ouvrages en métaux ; travail des métaux</td></tr>
+    <tr><td>C2601</td><td>FABRICATION DE COMPOSANTS ÉLECTRONIQUES, D'ORDINATEURS ET DE PÉRIPHÉRIQUES</td></tr>
+    <tr><td>C260101</td><td>Fabrication de composants, cartes électroniques et supports magnétiques</td></tr>
+    <tr><td>C260102</td><td>Fabrication d'ordinateurs et d'équipements périphériques</td></tr>
+    <tr><td>C2602</td><td>FABRICATION D'ÉQUIPEMENTS DE COMMUNICATION ET DE PRODUITS ÉLECTRONIQUES GRAND PUBLIC</td></tr>
+    <tr><td>C260201</td><td>Fabrication d'équipements de communication</td></tr>
+    <tr><td>C260202</td><td>Fabrication de produits électroniques grand public</td></tr>
+    <tr><td>C2603</td><td>FABRICATION D'ÉQUIPEMENTS D'IMAGERIE MÉDICALE, DE PRÉCISION, D'OPTIQUE ET D'HORLOGERIE</td></tr>
+    <tr><td>C260300</td><td>Fabrication d'équipements d'imagerie médicale, de précision, d'optique et d'horlogerie</td></tr>
+    <tr><td>C2701</td><td>FABRICATION DE MACHINES ET MATÉRIELS ÉLECTROTECHNIQUES</td></tr>
+    <tr><td>C270100</td><td>Fabrication de machines et matériels électrotechniques</td></tr>
+    <tr><td>C2702</td><td>FABRICATION D'APPAREILS DOMESTIQUES</td></tr>
+    <tr><td>C270200</td><td>Fabrication d'appareils domestiques</td></tr>
+    <tr><td>C2703</td><td>FABRICATION D'AUTRES MATÉRIELS ÉLECTRIQUES</td></tr>
+    <tr><td>C270300</td><td>Fabrication d'autres matériels électriques</td></tr>
+    <tr><td>C2801</td><td>FABRICATION DE MACHINES D'USAGE GÉNÉRAL</td></tr>
+    <tr><td>C280100</td><td>Fabrication de machines d'usage général</td></tr>
+    <tr><td>C2802</td><td>FABRICATION DE MACHINES D'USAGE SPÉCIFIQUE</td></tr>
+    <tr><td>C280200</td><td>Fabrication de machines d'usage spécifique</td></tr>
+    <tr><td>C2900</td><td>CONSTRUCTION DE VÉHICULES AUTOMOBILES</td></tr>
+    <tr><td>C290000</td><td>Construction de véhicules automobiles</td></tr>
+    <tr><td>C3001</td><td>CONSTRUCTION NAVALE, AÉRONAUTIQUE ET FERROVIAIRE</td></tr>
+    <tr><td>C300101</td><td>Construction navale</td></tr>
+    <tr><td>C300102</td><td>Construction aéronautique</td></tr>
+    <tr><td>C300103</td><td>Construction ferroviaire</td></tr>
+    <tr><td>C300104</td><td>Construction de véhicules militaires de combat</td></tr>
+    <tr><td>C3002</td><td>FABRICATION D'AUTRES ÉQUIPEMENTS DE TRANSPORT</td></tr>
+    <tr><td>C300200</td><td>Fabrication d'autres équipements de transport</td></tr>
+    <tr><td>C3100</td><td>FABRICATION DE MEUBLES ET MATELAS</td></tr>
+    <tr><td>C310001</td><td>Fabrication de matelas et sommiers</td></tr>
+    <tr><td>C310002</td><td>Fabrication de meubles</td></tr>
+    <tr><td>C3200</td><td>AUTRES INDUSTRIES</td></tr>
+    <tr><td>C320001</td><td>Fabrication de bijoux</td></tr>
+    <tr><td>C320002</td><td>Fabrication d'instruments de musique</td></tr>
+    <tr><td>C320003</td><td>Activités manufacturières n.c.a</td></tr>
+    <tr><td>C3301</td><td>RÉPARATION DE MACHINES ET D'ÉQUIPEMENTS PROFESSIONNELS</td></tr>
+    <tr><td>C330100</td><td>Réparation de machines et d'équipements professionnels</td></tr>
+    <tr><td>C3302</td><td>INSTALLATION DE MACHINES ET D'ÉQUIPEMENTS PROFESSIONNELS</td></tr>
+    <tr><td>C330200</td><td>Installation de machines et d'équipements professionnels</td></tr>
+    <tr><td>D3501</td><td>PRODUCTION, TRANSPORT ET DISTRIBUTION D'ÉLECTRICITÉ</td></tr>
+    <tr><td>D350100</td><td>Production, transport et distribution d'électricité</td></tr>
+    <tr><td>D3502</td><td>PRODUCTION ET DISTRIBUTION DE COMBUSTIBLES GAZEUX ET DE GLACE</td></tr>
+    <tr><td>D350200</td><td>Production et distribution de combustibles gazeux et de glace</td></tr>
+    <tr><td>E3600</td><td>CAPTAGE, TRAITEMENT ET DISTRIBUTION D'EAU</td></tr>
+    <tr><td>E360000</td><td>Captage, traitement et distribution d'eau</td></tr>
+    <tr><td>E3700</td><td>COLLECTE ET TRAITEMENT DES EAUX USÉES</td></tr>
+    <tr><td>E370000</td><td>Collecte et traitement des eaux usées</td></tr>
+    <tr><td>E3800</td><td>COLLECTE, TRAITEMENT ET ÉLIMINATION DES DÉCHETS ; RÉCUPÉRATION</td></tr>
+    <tr><td>E380001</td><td>Collecte, traitement et élimination des déchets</td></tr>
+    <tr><td>E380002</td><td>Récupération</td></tr>
+    <tr><td>E3900</td><td>DÉPOLLUTION ET GESTION DES DÉCHETS</td></tr>
+    <tr><td>E390000</td><td>Dépollution et gestion des déchets</td></tr>
+    <tr><td>F4101</td><td>PROMOTION IMMOBILIÈRE</td></tr>
+    <tr><td>F410100</td><td>Promotion immobilière</td></tr>
+    <tr><td>F4102</td><td>CONSTRUCTION DE BÂTIMENTS COMPLETS</td></tr>
+    <tr><td>F410200</td><td>Construction de bâtiments complets</td></tr>
+    <tr><td>F4200</td><td>GÉNIE CIVIL</td></tr>
+    <tr><td>F420001</td><td>Construction de routes et de voies ferrées</td></tr>
+    <tr><td>F420002</td><td>Construction de réseaux et de lignes</td></tr>
+    <tr><td>F420003</td><td>Construction d'autres ouvrages de génie civil</td></tr>
+    <tr><td>F4300</td><td>ACTIVITÉS SPÉCIALISÉES DE CONSTRUCTION</td></tr>
+    <tr><td>F430001</td><td>Démolition et préparation des sites</td></tr>
+    <tr><td>F430002</td><td>Travaux d'installation</td></tr>
+    <tr><td>F430003</td><td>Travaux de finition</td></tr>
+    <tr><td>F430004</td><td>Autres travaux spécialisés de construction</td></tr>
+    <tr><td>G4501</td><td>COMMERCE DE VÉHICULES AUTOMOBILES</td></tr>
+    <tr><td>G450100</td><td>Commerce de véhicules automobiles</td></tr>
+    <tr><td>G4502</td><td>ENTRETIEN ET RÉPARATION DE VÉHICULES AUTOMOBILES</td></tr>
+    <tr><td>G450200</td><td>Entretien et réparation de véhicules automobiles</td></tr>
+    <tr><td>G4503</td><td>COMMERCE DE PIÈCES DÉTACHÉES ET D'ACCESSOIRES AUTOMOBILES</td></tr>
+    <tr><td>G450300</td><td>Commerce de pièces détachées et d'accessoires automobiles</td></tr>
+    <tr><td>G4504</td><td>COMMERCE ET RÉPARATION DE MOTOCYCLES</td></tr>
+    <tr><td>G450400</td><td>Commerce et réparation de motocycles</td></tr>
+    <tr><td>G4601</td><td>ACTIVITÉS DES INTERMÉDIAIRES DU COMMERCE DE GROS</td></tr>
+    <tr><td>G460100</td><td>Activités des Intermédiaires du commerce de gros</td></tr>
+    <tr><td>G4602</td><td>COMMERCE DE GROS DE PRODUITS AGRICOLES BRUTS, D'ANIMAUX VIVANTS, PRODUITS ALIMENTAIRES, BOISSONS ET TABAC</td></tr>
+    <tr><td>G460201</td><td>Commerce de gros de produits agricoles bruts et d'aliments pour animaux</td></tr>
+    <tr><td>G460202</td><td>Commerce de gros d'animaux vivants, de peaux et cuirs</td></tr>
+    <tr><td>G460203</td><td>Commerce de gros de produits alimentaires, boissons et tabacs manufacturés</td></tr>
+    <tr><td>G4603</td><td>COMMERCE DE GROS DE BIENS DE CONSOMMATION NON ALIMENTAIRES</td></tr>
+    <tr><td>G460301</td><td>Commerce de gros de textiles, habillement et chaussures</td></tr>
+    <tr><td>G460302</td><td>Commerce de gros de produits pharmaceutiques et médicaux</td></tr>
+    <tr><td>G460303</td><td>Commerce de gros de biens de consommation non alimentaires divers</td></tr>
+    <tr><td>G4604</td><td>COMMERCE DE GROS DE PRODUITS INTERMÉDIAIRES NON AGRICOLES</td></tr>
+    <tr><td>G460401</td><td>Commerce de gros de carburants et combustibles</td></tr>
+    <tr><td>G460402</td><td>Commerce de gros de bois</td></tr>
+    <tr><td>G460403</td><td>Commerce de gros de matériaux de construction, quincaillerie et fournitures pour plomberie</td></tr>
+    <tr><td>G460404</td><td>Commerce de gros d'autres produits intermédiaires non agricoles</td></tr>
+    <tr><td>G4605</td><td>COMMERCE DE GROS DE MACHINES, D'ÉQUIPEMENTS ET FOURNITURES</td></tr>
+    <tr><td>G460501</td><td>Commerce de gros de machines, d'équipements et fournitures</td></tr>
+    <tr><td>G460502</td><td>Commerce de gros d'autres équipements industriels et fournitures diverses</td></tr>
+    <tr><td>G4606</td><td>COMMERCE DE GROS NON SPÉCIALISÉ</td></tr>
+    <tr><td>G460600</td><td>Commerce de gros non spécialisé</td></tr>
+    <tr><td>G4701</td><td>COMMERCE DE DÉTAIL EN MAGASIN NON SPÉCIALISÉ</td></tr>
+    <tr><td>G470100</td><td>Commerce de détail en magasin non spécialisé</td></tr>
+    <tr><td>G4702</td><td>COMMERCE DE DÉTAIL EN MAGASIN SPÉCIALISÉ</td></tr>
+    <tr><td>G470201</td><td>Commerce de détail en magasin spécialisé de produits alimentaires, boissons et tabacs manufacturés</td></tr>
+    <tr><td>G470202</td><td>Commerce de détail en magasin spécialisé de produits pharmaceutiques et médicaux, de parfumerie et de produits de beauté</td></tr>
+    <tr><td>G470203</td><td>Commerce de détail en magasin spécialisé de textiles, habillement, chaussures et articles en cuir</td></tr>
+    <tr><td>G470204</td><td>Commerce de détail en magasin spécialisé d'articles et appareils d'équipement domestique</td></tr>
+    <tr><td>G470205</td><td>Commerce de détail en magasin spécialisé de quincaillerie, peintures, verre, tapis et revêtement de sols et murs</td></tr>
+    <tr><td>G470206</td><td>Commerce de détail en magasin spécialisé de livres, journaux et articles de sport et de loisirs</td></tr>
+    <tr><td>G470207</td><td>Commerce de détail en magasin spécialisé d'équipements informatiques et de matériels de télécommunication, audio ou vidéo</td></tr>
+    <tr><td>G470208</td><td>Commerce de détail en magasin spécialisé de carburants automobiles</td></tr>
+    <tr><td>G470209</td><td>Commerce de détail en magasin spécialisé d'autres produits n.c.a.</td></tr>
+    <tr><td>G4703</td><td>COMMERCE DE DÉTAIL HORS MAGASIN</td></tr>
+    <tr><td>G470301</td><td>Commerce de détail sur éventaires et marchés de viandes et poissons</td></tr>
+    <tr><td>G470302</td><td>Commerce de détail sur éventaires et marchés de fruits et légumes frais</td></tr>
+    <tr><td>G470303</td><td>Commerce de détail sur éventaires et marchés de céréales, tubercules et d'autres produits alimentaires, boissons et tabacs manufacturés</td></tr>
+    <tr><td>G470304</td><td>Commerce de détail sur éventaires et marchés de textiles, habillement, chaussures et articles en cuir</td></tr>
+    <tr><td>G470305</td><td>Commerce de détail sur éventaires et marchés d'articles non alimentaires divers</td></tr>
+    <tr><td>G470306</td><td>Autres commerces de détail hors magasin</td></tr>
+    <tr><td>H4901</td><td>TRANSPORTS FERROVIAIRES</td></tr>
+    <tr><td>H490100</td><td>Transports ferroviaires</td></tr>
+    <tr><td>H4902</td><td>TRANSPORTS ROUTIERS</td></tr>
+    <tr><td>H490201</td><td>Transports routiers de passagers</td></tr>
+    <tr><td>H490202</td><td>Transports routiers de marchandises</td></tr>
+    <tr><td>H4903</td><td>TRANSPORTS PAR CONDUITES</td></tr>
+    <tr><td>H490300</td><td>Transports par conduites</td></tr>
+    <tr><td>H5001</td><td>TRANSPORTS MARITIMES ET CÔTIERS</td></tr>
+    <tr><td>H500100</td><td>Transports maritimes et côtiers</td></tr>
+    <tr><td>H5002</td><td>TRANSPORTS FLUVIAUX</td></tr>
+    <tr><td>H500200</td><td>Transports fluviaux</td></tr>
+    <tr><td>H5100</td><td>TRANSPORTS AÉRIENS</td></tr>
+    <tr><td>H510001</td><td>Transports aériens de passagers</td></tr>
+    <tr><td>H510002</td><td>Transports aériens de fret et transports spatiaux</td></tr>
+    <tr><td>H5201</td><td>ENTREPOSAGE</td></tr>
+    <tr><td>H520100</td><td>Entreposage</td></tr>
+    <tr><td>H5202</td><td>ACTIVITÉS AUXILIAIRES DES TRANSPORTS</td></tr>
+    <tr><td>H520201</td><td>Manutention</td></tr>
+    <tr><td>H520202</td><td>Exploitation d'infrastructures de transport</td></tr>
+    <tr><td>H520203</td><td>Organisation du transport de fret</td></tr>
+    <tr><td>H5300</td><td>ACTIVITÉS DE POSTE ET DE COURRIER</td></tr>
+    <tr><td>H530001</td><td>Activités de service postal universel</td></tr>
+    <tr><td>H530002</td><td>Autres activités de courrier et de distribution</td></tr>
+    <tr><td>I5500</td><td>HÉBERGEMENT</td></tr>
+    <tr><td>I550000</td><td>Hébergement</td></tr>
+    <tr><td>I5601</td><td>RESTAURATION</td></tr>
     <tr><td>I560100</td><td>Restauration</td></tr>
-    <tr><td>G471000</td><td>Commerce de détail</td></tr>
-    <tr><td>F410000</td><td>Construction de bâtiments</td></tr>
-    <tr><td>C100000</td><td>Industries alimentaires</td></tr>
-    <tr><td>H490000</td><td>Transports terrestres</td></tr>
+    <tr><td>I5602</td><td>ACTIVITÉS DES DÉBITS DE BOISSONS</td></tr>
+    <tr><td>I560200</td><td>Activités des débits de boissons</td></tr>
+    <tr><td>J5801</td><td>ÉDITION DE LIVRES ET PÉRIODIQUES ET AUTRES ACTIVITÉS D'ÉDITION</td></tr>
+    <tr><td>J580100</td><td>Édition de livres et périodiques</td></tr>
+    <tr><td>J5802</td><td>ÉDITION DE LOGICIELS</td></tr>
+    <tr><td>J580200</td><td>Édition de logiciels</td></tr>
+    <tr><td>J5901</td><td>PRODUCTION VIDÉO : CINÉMA ET TÉLÉVISION</td></tr>
+    <tr><td>J590100</td><td>Production vidéo : cinéma et télévision</td></tr>
+    <tr><td>J5902</td><td>PRODUCTION AUDIO ET ÉDITION MUSICALE</td></tr>
+    <tr><td>J590200</td><td>Production audio et édition musicale</td></tr>
+    <tr><td>J6000</td><td>PROGRAMMATION TÉLÉVISUELLE ; RADIODIFFUSION</td></tr>
+    <tr><td>J600001</td><td>Édition et diffusion de programmes radio</td></tr>
+    <tr><td>J600002</td><td>Programmation télévisuelle ; Télédiffusion</td></tr>
+    <tr><td>J6100</td><td>TÉLÉCOMMUNICATIONS</td></tr>
+    <tr><td>J610000</td><td>Télécommunications</td></tr>
+    <tr><td>J6200</td><td>ACTIVITÉS INFORMATIQUES : CONSEIL, PROGRAMMATION</td></tr>
+    <tr><td>J620001</td><td>Programmation informatique</td></tr>
+    <tr><td>J620002</td><td>Conseil et autres activités informatiques</td></tr>
+    <tr><td>J6300</td><td>ACTIVITÉS DE FOURNITURE D'INFORMATION</td></tr>
+    <tr><td>J630001</td><td>Traitement de données, hébergement et activités connexes ; Création de portails Internet</td></tr>
+    <tr><td>J630002</td><td>Autres activités liées à l'information</td></tr>
+    <tr><td>K6401</td><td>INTERMÉDIATION MONÉTAIRE</td></tr>
+    <tr><td>K640101</td><td>Activités de banque centrale</td></tr>
+    <tr><td>K640102</td><td>Autres intermédiations monétaires (Banques commerciales)</td></tr>
+    <tr><td>K6402</td><td>ACTIVITÉS DES FONDS DE PLACEMENTS, HOLDINGS ET SIMILAIRES</td></tr>
+    <tr><td>K640200</td><td>Activités des fonds de placements, holdings et similaires</td></tr>
+    <tr><td>K6403</td><td>ACTIVITÉS DE CRÉDITS ET AUTRES INTERMÉDIATIONS NON MONÉTAIRES</td></tr>
+    <tr><td>K640301</td><td>Activités de micro finance</td></tr>
+    <tr><td>K640302</td><td>Autres activités de crédits et autres intermédiations non monétaires</td></tr>
+    <tr><td>K6500</td><td>ASSURANCE</td></tr>
+    <tr><td>K650001</td><td>Assurance vie et caisses de retraite</td></tr>
+    <tr><td>K650002</td><td>Assurance dommage et réassurance</td></tr>
+    <tr><td>K6600</td><td>ACTIVITÉS D'AUXILIAIRES FINANCIERS ET D'ASSURANCE</td></tr>
+    <tr><td>K660001</td><td>Gestion de Fonds pour tiers</td></tr>
+    <tr><td>K660002</td><td>Activités de transfert de fonds et d'auxiliaires financiers</td></tr>
+    <tr><td>K660003</td><td>Activités d'auxiliaires d'assurance</td></tr>
+    <tr><td>L6801</td><td>LOCATION IMMOBILIÈRE ET ACTIVITÉS SUR BIENS PROPRES</td></tr>
+    <tr><td>L680100</td><td>Location immobilière et activités sur biens propres</td></tr>
+    <tr><td>L6802</td><td>ACTIVITÉS DES AGENCES IMMOBILIÈRES</td></tr>
+    <tr><td>L680200</td><td>Activités des agences immobilières</td></tr>
+    <tr><td>M6901</td><td>ACTIVITÉS JURIDIQUES</td></tr>
+    <tr><td>M690100</td><td>Activités juridiques</td></tr>
+    <tr><td>M6902</td><td>ACTIVITÉS COMPTABLES</td></tr>
+    <tr><td>M690200</td><td>Activités comptables</td></tr>
+    <tr><td>M7000</td><td>ACTIVITÉS DES SIÈGES SOCIAUX ; CONSEIL EN GESTION</td></tr>
+    <tr><td>M700001</td><td>Activités des sièges sociaux</td></tr>
+    <tr><td>M700002</td><td>Conseil de gestion</td></tr>
+    <tr><td>M7100</td><td>ACTIVITÉS D'ARCHITECTURE, D'INGÉNIERIE ET TECHNIQUES</td></tr>
+    <tr><td>M710001</td><td>Activités d'architecture et d'ingénierie</td></tr>
+    <tr><td>M710002</td><td>Activités de contrôle et analyses techniques</td></tr>
+    <tr><td>M7201</td><td>RECHERCHE-DÉVELOPPEMENT EN SCIENCES PHYSIQUES ET NATURELLES</td></tr>
+    <tr><td>M720100</td><td>Recherche-développement en sciences physiques et naturelles</td></tr>
+    <tr><td>M7202</td><td>RECHERCHE-DÉVELOPPEMENT EN SCIENCES HUMAINES ET SOCIALES</td></tr>
+    <tr><td>M720200</td><td>Recherche-développement en sciences humaines et sociales</td></tr>
+    <tr><td>M7300</td><td>PUBLICITÉ ET ÉTUDES DE MARCHÉS</td></tr>
+    <tr><td>M730001</td><td>Publicité</td></tr>
+    <tr><td>M730002</td><td>Études de marché et sondages</td></tr>
+    <tr><td>M7400</td><td>AUTRES ACTIVITÉS SPÉCIALISÉES SCIENTIFIQUES ET TECHNIQUES</td></tr>
+    <tr><td>M740001</td><td>Activités spécialisées de design</td></tr>
+    <tr><td>M740002</td><td>Activités photographiques</td></tr>
+    <tr><td>M740003</td><td>Autres activités spécialisées, scientifiques et techniques n.c.a.</td></tr>
+    <tr><td>M7500</td><td>ACTIVITÉS VÉTÉRINAIRES</td></tr>
+    <tr><td>M750000</td><td>Activités vétérinaires</td></tr>
+    <tr><td>N7700</td><td>LOCATION ET LOCATION-BAIL</td></tr>
+    <tr><td>N770001</td><td>Location de véhicules automobiles</td></tr>
+    <tr><td>N770002</td><td>Location de machines et d'équipements n.c.a.</td></tr>
+    <tr><td>N770003</td><td>Location d'articles personnels et domestiques n.c.a.</td></tr>
+    <tr><td>N770004</td><td>Gestion des droits de propriété industrielle</td></tr>
+    <tr><td>N7800</td><td>ACTIVITÉS LIÉES AUX RESSOURCES HUMAINES</td></tr>
+    <tr><td>N780000</td><td>Activités liées aux ressources humaines</td></tr>
+    <tr><td>N7900</td><td>ACTIVITÉS DES AGENCES DE RÉSERVATION ET VOYAGISTES</td></tr>
+    <tr><td>N790000</td><td>Activités des agences de réservation et voyagistes</td></tr>
+    <tr><td>N8000</td><td>ENQUÊTES ET SÉCURITÉ</td></tr>
+    <tr><td>N800000</td><td>Enquêtes et sécurité</td></tr>
+    <tr><td>N8100</td><td>SOUTIEN AUX BÂTIMENTS ; AMÉNAGEMENT PAYSAGER</td></tr>
+    <tr><td>N810001</td><td>Activités combinées de soutien aux bâtiments</td></tr>
+    <tr><td>N810002</td><td>Activités de nettoyage</td></tr>
+    <tr><td>N810003</td><td>Aménagement paysager</td></tr>
+    <tr><td>N8200</td><td>ACTIVITÉS DE SOUTIEN AUX ENTREPRISES ; ACTIVITÉS DE BUREAU</td></tr>
+    <tr><td>N820001</td><td>Activités de bureau, routage et centres d'appels</td></tr>
+    <tr><td>N820002</td><td>Organisation de foires, salons et congrès</td></tr>
+    <tr><td>N820003</td><td>Activités de soutien aux entreprises n.c.a.</td></tr>
+    <tr><td>O8401</td><td>ACTIVITÉS D'ADMINISTRATION GÉNÉRALE, ÉCONOMIQUE ET SOCIALE</td></tr>
+    <tr><td>O840100</td><td>Activités d'administration générale, économique et sociale</td></tr>
+    <tr><td>O8402</td><td>ACTIVITÉS DE PRÉROGATIVE PUBLIQUE</td></tr>
+    <tr><td>O840200</td><td>Activités de prérogative publique</td></tr>
+    <tr><td>O8403</td><td>ACTIVITÉS DE SÉCURITÉ SOCIALE OBLIGATOIRE</td></tr>
+    <tr><td>O840300</td><td>Activités de sécurité sociale obligatoire</td></tr>
+    <tr><td>P8501</td><td>ENSEIGNEMENT PRÉ-PRIMAIRE ET PRIMAIRE</td></tr>
+    <tr><td>P850100</td><td>Enseignement pré-primaire et primaire</td></tr>
+    <tr><td>P8502</td><td>ENSEIGNEMENT SECONDAIRE</td></tr>
+    <tr><td>P850201</td><td>Enseignement secondaire général</td></tr>
+    <tr><td>P850202</td><td>Enseignement secondaire technique ou professionnel</td></tr>
+    <tr><td>P8503</td><td>ENSEIGNEMENT SUPÉRIEUR ET POST-SECONDAIRE NON SUPÉRIEUR</td></tr>
+    <tr><td>P850301</td><td>Enseignement supérieur</td></tr>
+    <tr><td>P850302</td><td>Enseignement post-secondaire non supérieur</td></tr>
+    <tr><td>P8504</td><td>AUTRES ACTIVITÉS D'ENSEIGNEMENT</td></tr>
+    <tr><td>P850400</td><td>Autres activités d'enseignement</td></tr>
+    <tr><td>Q8601</td><td>ACTIVITÉS HOSPITALIÈRES</td></tr>
+    <tr><td>Q860100</td><td>Activités hospitalières</td></tr>
+    <tr><td>Q8602</td><td>ACTIVITÉ DES MÉDECINS ET DES DENTISTES</td></tr>
+    <tr><td>Q860200</td><td>Activité des médecins et des dentistes</td></tr>
+    <tr><td>Q8603</td><td>ACTIVITÉS PARAMÉDICALES ET DE SOUTIEN</td></tr>
+    <tr><td>Q860301</td><td>Activités des tradipraticiens</td></tr>
+    <tr><td>Q860302</td><td>Autres activités pour la santé humaine</td></tr>
+    <tr><td>Q8700</td><td>ACTIVITÉS D'HÉBERGEMENT MÉDICO-SOCIAL ET SOCIAL</td></tr>
+    <tr><td>Q870000</td><td>Activités d'hébergement médico-social et social</td></tr>
+    <tr><td>Q8800</td><td>ACTION SOCIALE SANS HÉBERGEMENT</td></tr>
+    <tr><td>Q880000</td><td>Action sociale sans hébergement</td></tr>
+    <tr><td>R9000</td><td>ACTIVITÉS CRÉATIVES, ARTISTIQUES ET DE SPECTACLE</td></tr>
+    <tr><td>R900000</td><td>Activités créatives, artistiques et de spectacle</td></tr>
+    <tr><td>R9100</td><td>CONSERVATION ET VALORISATION DU PATRIMOINE</td></tr>
+    <tr><td>R910000</td><td>Conservation et valorisation du patrimoine</td></tr>
+    <tr><td>R9200</td><td>ORGANISATION DE JEUX DE HASARD ET D'ARGENT</td></tr>
+    <tr><td>R920000</td><td>Organisation de jeux de hasard et d'argent</td></tr>
+    <tr><td>R9301</td><td>ACTIVITÉS LIÉES AU SPORT</td></tr>
+    <tr><td>R930100</td><td>Activités liées au sport</td></tr>
+    <tr><td>R9302</td><td>ACTIVITÉS RÉCRÉATIVES ET DE LOISIRS</td></tr>
+    <tr><td>R930200</td><td>Activités récréatives et de loisirs</td></tr>
+    <tr><td>S9401</td><td>ACTIVITÉS DES ORGANISATIONS ÉCONOMIQUES, PATRONALES ET PROFESSIONNELLES</td></tr>
+    <tr><td>S940100</td><td>Activités des organisations économiques, patronales et professionnelles</td></tr>
+    <tr><td>S9402</td><td>ACTIVITÉS DES SYNDICATS DES TRAVAILLEURS</td></tr>
+    <tr><td>S940200</td><td>Activités des syndicats des travailleurs</td></tr>
+    <tr><td>S9403</td><td>ACTIVITÉS DES AUTRES ORGANISATIONS ASSOCIATIVES</td></tr>
+    <tr><td>S940301</td><td>Activités des organisations religieuses</td></tr>
+    <tr><td>S940302</td><td>Activités des organisations politiques</td></tr>
+    <tr><td>S940303</td><td>Activités des autres organisations associatives</td></tr>
+    <tr><td>S9501</td><td>RÉPARATION D'ORDINATEURS ET D'ÉQUIPEMENTS DE COMMUNICATION</td></tr>
+    <tr><td>S950101</td><td>Réparation d'ordinateurs et d'équipements périphériques</td></tr>
+    <tr><td>S950102</td><td>Réparation d'équipements de communication</td></tr>
+    <tr><td>S9502</td><td>RÉPARATION DE BIENS PERSONNELS ET DOMESTIQUES</td></tr>
+    <tr><td>S950200</td><td>Réparation de biens personnels et domestiques</td></tr>
+    <tr><td>S9600</td><td>FOURNITURE D'AUTRES SERVICES PERSONNELS</td></tr>
+    <tr><td>S960001</td><td>Lavage et nettoyage de textiles</td></tr>
+    <tr><td>S960002</td><td>Coiffure et soins de beauté</td></tr>
+    <tr><td>S960003</td><td>Services funéraires</td></tr>
+    <tr><td>S960004</td><td>Autres services personnels n.c.a</td></tr>
+    <tr><td>T9700</td><td>ACTIVITÉS DES MÉNAGES EN TANT QU'EMPLOYEURS DE PERSONNEL DOMESTIQUE</td></tr>
+    <tr><td>T970000</td><td>Activités des ménages en tant qu'employeurs de personnel domestique</td></tr>
+    <tr><td>T9800</td><td>ACTIVITÉS INDIFFÉRENCIÉES AUTOPRODUITES DES MÉNAGES</td></tr>
+    <tr><td>T980001</td><td>Activités indifférenciées des ménages en tant que producteurs de biens pour usage propre</td></tr>
+    <tr><td>T980002</td><td>Activités indifférenciées des ménages en tant que producteurs de services pour usage propre</td></tr>
+    <tr><td>U9900</td><td>ACTIVITÉS DES ORGANISATIONS EXTRATERRITORIALES</td></tr>
+    <tr><td>U990000</td><td>Activités des organisations extraterritoriales</td></tr>
   </table>
 </div>
 
@@ -694,8 +1172,13 @@
     <p><label>Nombre d'établissements hors du pays (comptabilité distincte)</label>
     <input type="text" name="texte_nb_etabl_hors_pays" value="{{ fiche_r2.get('nb_etabl_hors_pays', '') }}"></p>
     <h4>Activité de l'entité (désignation par ordre décroissant de CA HT ou VA, et code nomenclature — Note 36 suite)</h4>
+    <p>
+      <label style="margin-right:1.5rem">Base de calcul :</label>
+      <label style="margin-right:1rem"><input type="radio" name="texte_type_montant_activite" value="CA HT" {% if fiche_r2.get('type_montant_activite','CA HT') == 'CA HT' %}checked{% endif %}> CA HT</label>
+      <label><input type="radio" name="texte_type_montant_activite" value="VA" {% if fiche_r2.get('type_montant_activite') == 'VA' %}checked{% endif %}> VA (Valeur Ajoutée)</label>
+    </p>
     <table>
-      <tr><th>Désignation de l'activité</th><th>CA HT / VA</th><th>Code nomenclature</th><th>% activité dans le CA HT ou la VA</th></tr>
+      <tr><th>Désignation de l'activité</th><th id="th-montant-activite">{{ fiche_r2.get('type_montant_activite', 'CA HT') }}</th><th>Code nomenclature</th><th>% activité dans le {{ fiche_r2.get('type_montant_activite', 'CA HT') }}</th></tr>
       {% for i in fiche_r2_activites_rows %}
       <tr>
         <td><input type="text" name="texte_activite_{{ i }}_designation" value="{{ fiche_r2.get('activite_%d_designation' % i, '') }}" placeholder="{{ 'Divers' if i == (fiche_r2_activites_rows|last) else '' }}"></td>
@@ -711,6 +1194,14 @@
         <td><strong>{{ '100,00 %' if fiche_r2_activite_total else '' }}</strong></td>
       </tr>
     </table>
+    <script>
+      document.querySelectorAll('input[name="texte_type_montant_activite"]').forEach(function(r){
+        r.addEventListener('change', function(){
+          var th = document.getElementById('th-montant-activite');
+          if(th) th.textContent = this.value;
+        });
+      });
+    </script>
     <button class="btn" type="submit">Enregistrer</button>
   </form>
 </div>
