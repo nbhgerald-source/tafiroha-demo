@@ -24,6 +24,7 @@ import openpyxl
 
 import db
 import calc_engine as ce
+import xml_engine as xe
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 jinja_env = Environment(loader=FileSystemLoader(os.path.join(BASE_DIR, "templates")))
@@ -4199,6 +4200,27 @@ def view_gestionnaires(req, conn, user):
     return Response(render("gestionnaires.html", user=user, gestionnaires=gestionnaires, counts=counts))
 
 
+def view_export_xml(req, conn, user, exercice_id):
+    """Génère et renvoie le fichier XML EDI (e-impôts DGI) pour l'exercice."""
+    exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
+    if not exo:
+        return Response("Exercice introuvable", status="404 Not Found")
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
+    is_admin = user["role"] == "admin"
+    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
+    is_client = user["role"] == "client" and user["client_id"] == client["id"]
+    if not (is_admin or is_owner_gestionnaire or is_client):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    xml_bytes = xe.generate_xml(conn, exercice_id, dict(client), dict(exo))
+    filename  = xe.xml_filename(dict(client), dict(exo))
+    return Response(
+        xml_bytes,
+        content_type="application/xml",
+        headers=[("Content-Disposition", 'attachment; filename="%s"' % filename)],
+    )
+
+
 def dispatch(req, conn):
     path = req.path.rstrip("/") or "/"
 
@@ -4253,6 +4275,10 @@ def dispatch(req, conn):
     if path.startswith("/client/"):
         client_id = int(path.split("/")[2])
         return view_client_dashboard(req, conn, user, client_id)
+
+    if path.startswith("/exercice/") and path.endswith("/export.xml"):
+        exercice_id = int(path.split("/")[2])
+        return view_export_xml(req, conn, user, exercice_id)
 
     if path.startswith("/exercice/"):
         exercice_id = int(path.split("/")[2])
