@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Audit — Clients actifs par gestionnaire</h2>
+  <p class="muted">Un client est considéré <strong>actif</strong> s'il possède au moins un exercice comptable créé.</p>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+    <a href="/admin" style="font-size:.9rem">← Retour au tableau de bord</a>
+    <a class="btn" href="/admin/audit?format=csv" style="margin-left:auto;font-size:.85rem;padding:5px 14px">
+      ⬇ Exporter CSV
+    </a>
+  </div>
+</div>
+
+<!-- Résumé global -->
+<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:.5rem">
+  <div class="card" style="flex:1;min-width:140px;text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:var(--primary,#1a5276)">{{ totaux['clients_total'] }}</div>
+    <div class="muted" style="font-size:.85rem">Clients au total</div>
+  </div>
+  <div class="card" style="flex:1;min-width:140px;text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:#28a745">{{ totaux['clients_actifs'] }}</div>
+    <div class="muted" style="font-size:.85rem">Clients actifs</div>
+  </div>
+  <div class="card" style="flex:1;min-width:140px;text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:#555">{{ totaux['exercices_total'] }}</div>
+    <div class="muted" style="font-size:.85rem">Exercices créés</div>
+  </div>
+  <div class="card" style="flex:1;min-width:140px;text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:#555">{{ rows | length }}</div>
+    <div class="muted" style="font-size:.85rem">Gestionnaires</div>
+  </div>
+</div>
+
+<!-- Tableau détaillé -->
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Gestionnaire</th>
+        <th>Compte créé</th>
+        <th style="text-align:center">Clients créés</th>
+        <th style="text-align:center">Clients actifs</th>
+        <th style="text-align:center">Exercices</th>
+        <th>Dernière activité</th>
+        <th style="text-align:center">Taux d'activation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      {% set taux = ((r['clients_actifs'] / r['clients_total'] * 100) | int) if r['clients_total'] > 0 else 0 %}
+      <tr>
+        <td>
+          <a href="/admin/gestionnaires" style="text-decoration:none">{{ r['email'] }}</a>
+        </td>
+        <td class="muted">{{ r['compte_cree'][:10] if r['compte_cree'] else '—' }}</td>
+        <td style="text-align:center">{{ r['clients_total'] }}</td>
+        <td style="text-align:center">
+          {% if r['clients_actifs'] > 0 %}
+          <span style="color:#28a745;font-weight:600">{{ r['clients_actifs'] }}</span>
+          {% else %}
+          <span class="muted">0</span>
+          {% endif %}
+        </td>
+        <td style="text-align:center">{{ r['exercices_total'] }}</td>
+        <td class="muted">{{ r['derniere_activite'][:10] if r['derniere_activite'] else '—' }}</td>
+        <td style="text-align:center">
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center">
+            <div style="width:80px;background:#eee;border-radius:4px;height:8px;overflow:hidden">
+              <div style="width:{{ taux }}%;background:{% if taux >= 75 %}#28a745{% elif taux >= 40 %}#ffc107{% else %}#dc3545{% endif %};height:100%"></div>
+            </div>
+            <span style="font-size:.82rem;color:#555">{{ taux }}%</span>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">Aucun gestionnaire enregistré.</td></tr>
+      {% endfor %}
+
+      <!-- Ligne Admin direct -->
+      {% set taux_admin = ((admin_direct['clients_actifs'] / admin_direct['clients_total'] * 100) | int) if admin_direct['clients_total'] > 0 else 0 %}
+      <tr style="background:#f8f8f8;border-top:2px solid #ddd">
+        <td><em>Admin (direct)</em></td>
+        <td class="muted">—</td>
+        <td style="text-align:center">{{ admin_direct['clients_total'] }}</td>
+        <td style="text-align:center">
+          {% if admin_direct['clients_actifs'] > 0 %}
+          <span style="color:#28a745;font-weight:600">{{ admin_direct['clients_actifs'] }}</span>
+          {% else %}
+          <span class="muted">0</span>
+          {% endif %}
+        </td>
+        <td style="text-align:center">{{ admin_direct['exercices_total'] }}</td>
+        <td class="muted">{{ admin_direct['derniere_activite'][:10] if admin_direct['derniere_activite'] else '—' }}</td>
+        <td style="text-align:center">
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center">
+            <div style="width:80px;background:#eee;border-radius:4px;height:8px;overflow:hidden">
+              <div style="width:{{ taux_admin }}%;background:{% if taux_admin >= 75 %}#28a745{% elif taux_admin >= 40 %}#ffc107{% else %}#dc3545{% endif %};height:100%"></div>
+            </div>
+            <span style="font-size:.82rem;color:#555">{{ taux_admin }}%</span>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Ligne TOTAL -->
+      <tr style="font-weight:700;border-top:2px solid #bbb">
+        <td>TOTAL</td>
+        <td></td>
+        <td style="text-align:center">{{ totaux['clients_total'] }}</td>
+        <td style="text-align:center;color:#28a745">{{ totaux['clients_actifs'] }}</td>
+        <td style="text-align:center">{{ totaux['exercices_total'] }}</td>
+        <td></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

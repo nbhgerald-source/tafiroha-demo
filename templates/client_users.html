@@ -22,7 +22,8 @@
     <tr>
       <td>{{ u['email'] }}</td>
       <td class="muted">{{ u['created_at'][:10] if u['created_at'] else '—' }}</td>
-      <td>
+      <td style="white-space:nowrap">
+        <a class="btn" href="/admin/users/{{ u['id'] }}/reset-password" style="font-size:12px;padding:4px 10px;background:#555;margin-right:4px;">Réinitialiser mdp</a>
         <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer cet utilisateur ?');">
           <input type="hidden" name="action" value="delete">
           <input type="hidden" name="user_id" value="{{ u['id'] }}">

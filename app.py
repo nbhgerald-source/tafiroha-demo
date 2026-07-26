@@ -4114,6 +4114,44 @@ def view_reset_password(req, conn, token):
 
 
 
+def view_admin_reset_user_password(req, conn, user, target_id):
+    """Réinitialisation du mot de passe d'un utilisateur par l'admin ou le gestionnaire."""
+    if user["role"] not in ("admin", "gestionnaire"):
+        return Response("Accès refusé", status="403 Forbidden")
+    target = conn.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
+    if not target:
+        return Response("Utilisateur introuvable", status="404 Not Found")
+    if user["role"] == "gestionnaire" and target["role"] != "client":
+        return Response("Accès refusé", status="403 Forbidden")
+    if target["role"] == "gestionnaire":
+        back_url = "/admin/gestionnaires"
+    elif target["role"] == "client" and target["client_id"]:
+        back_url = "/client/%d/users" % target["client_id"]
+    else:
+        back_url = "/admin"
+    error = None
+    success = False
+    if req.method == "POST":
+        new_password = req.form.get("new_password", "")
+        confirm      = req.form.get("confirm_password", "")
+        if not new_password:
+            error = "Le mot de passe ne peut pas être vide."
+        elif len(new_password) < 6:
+            error = "Le mot de passe doit contenir au moins 6 caractères."
+        elif new_password != confirm:
+            error = "La confirmation ne correspond pas."
+        else:
+            conn.execute(
+                "UPDATE users SET password_hash=?, is_default=1 WHERE id=?",
+                (db.hash_password(new_password), target_id),
+            )
+            conn.commit()
+            success = True
+    return Response(render("reset_user_password.html",
+                           user=user, target_user=target,
+                           back_url=back_url, error=error, success=success))
+
+
 def view_logout(req, conn):
     token = req.cookies.get("session")
     db.delete_session(conn, token)
@@ -4703,6 +4741,169 @@ def handle_upload(req, conn, exercice_id):
     return "%d lignes (%s) importées pour la période %s." % (len(rows), label, periode)
 
 
+EXPORT_TEMPLATE_PATH = os.path.join(STATIC_DIR, "export_template.xlsx")
+
+
+def _fill_sheet_header(ws, client, exo):
+    """Remplace les formules inter-feuilles des lignes d'en-tête (1-7) par les
+    valeurs statiques du client et de l'exercice."""
+    import datetime as _dt
+
+    raison  = (client["raison_sociale"] or "") if client else ""
+    adresse = (client["adresse"] or "") if client else ""
+    ncc     = (client["ncc"] or "") if client else ""
+    ntd     = (client["ntd"] or "") if client else ""
+    sigle   = ""
+    date_fin_str = exo["date_fin"] or "" if exo else ""
+    date_debut_str = exo["date_debut"] or "" if exo else ""
+
+    date_fin_display = date_fin_str
+    try:
+        date_fin_display = _dt.datetime.strptime(date_fin_str[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        pass
+
+    duree = ""
+    try:
+        d1 = _dt.datetime.strptime(date_debut_str[:10], "%Y-%m-%d")
+        d2 = _dt.datetime.strptime(date_fin_str[:10], "%Y-%m-%d")
+        duree = str((d2.year - d1.year) * 12 + (d2.month - d1.month) + 1)
+    except Exception:
+        pass
+
+    for row in ws.iter_rows(min_row=1, max_row=7):
+        labels = {}
+        formulas = {}
+        for cell in row:
+            if cell.__class__.__name__ == "MergedCell":
+                continue
+            v = cell.value
+            if v is None:
+                continue
+            if isinstance(v, str) and v.startswith("="):
+                formulas[cell.column] = cell
+            elif isinstance(v, str):
+                labels[cell.column] = v.lower()
+
+        for col, cell in formulas.items():
+            lbl = ""
+            for lc in sorted(labels.keys(), reverse=True):
+                if lc < col:
+                    lbl = labels[lc]
+                    break
+            value = None
+            if "dénomination" in lbl or "raison" in lbl or "entité" in lbl:
+                value = raison
+            elif "adresse" in lbl:
+                value = adresse
+            elif "ncc" in lbl or "compte contribuable" in lbl or "identification fiscale" in lbl:
+                value = ncc
+            elif "ntd" in lbl or "télédéclarant" in lbl:
+                value = ntd
+            elif "exercice clos" in lbl:
+                value = date_fin_display
+            elif "durée" in lbl or "duree" in lbl:
+                value = duree
+            elif "sigle" in lbl:
+                value = sigle
+            if value is not None:
+                try:
+                    cell.value = value
+                except Exception:
+                    pass
+
+
+def _set_cell_safe(ws, coord, value):
+    """Écrit une valeur dans une cellule du modèle Excel, en ignorant les cellules fusionnées."""
+    try:
+        cell = ws[coord]
+        if cell.__class__.__name__ == "MergedCell":
+            return
+        cell.value = value
+    except Exception:
+        pass
+
+
+def _exportable_cells(sheet, cache, manual_sheet=None):
+    """Ne conserve que les cellules calculées (formules) ou saisies manuellement."""
+    raw_cells = ce.SHEETS_RAW.get(sheet, {})
+    manual_sheet = manual_sheet or {}
+    out = {}
+    for coord, value in cache.items():
+        raw = raw_cells.get(coord)
+        is_formula = isinstance(raw, str) and raw.startswith("=")
+        is_manual = coord in manual_sheet and manual_sheet[coord] not in (None, "")
+        if is_formula or is_manual:
+            out[coord] = value
+    return out
+
+
+def view_export_xlsx(req, conn, user, exercice_id):
+    """Exporte les feuilles principales (BILAN, RESULTAT, TFT + NOTES) vers .xlsx."""
+    exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
+    if not exo:
+        return Response("Exercice introuvable", status="404 Not Found")
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
+    if not user_can_access_client(user, client):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    balN = load_balance(conn, exercice_id, "N")
+    balN1 = load_balance(conn, exercice_id, "N1")
+    tftn = load_tft_detail(conn, exercice_id, "N")
+    tftn1 = load_tft_detail(conn, exercice_id, "N1")
+    note3_manual = load_note3_manual(conn, exercice_id)
+
+    all_sheets = {}
+    if balN:
+        all_sheets["BILAN"] = _exportable_cells("BILAN", ce.compute_sheet("BILAN", balN, balN1))
+        all_sheets["RESULTAT"] = _exportable_cells("RESULTAT", ce.compute_sheet("RESULTAT", balN, balN1))
+        all_sheets["TFT"] = _exportable_cells("TFT", ce.compute_sheet("TFT", balN, balN1, tftn, tftn1))
+
+    note_sheets = [k for k in ce.SHEETS_RAW.keys() if k not in ("BILAN", "RESULTAT", "TFT")]
+    notes_computed = ce.compute_workbook(note_sheets, balN, balN1, manual=note3_manual)
+    for sh, cache in notes_computed.items():
+        all_sheets[sh] = _exportable_cells(sh, cache, note3_manual.get(sh, {}))
+
+    if not os.path.isfile(EXPORT_TEMPLATE_PATH):
+        return Response("Modèle d'export introuvable sur le serveur.", status="500 Internal Server Error")
+
+    wb = openpyxl.load_workbook(EXPORT_TEMPLATE_PATH)
+
+    # ── 1. Écrire les valeurs calculées ─────────────────────────────────────
+    for sheet_name, cells in all_sheets.items():
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        for coord, value in cells.items():
+            _set_cell_safe(ws, coord, value)
+
+    # ── 2. Remplir les en-têtes avec les informations du client ─────────────
+    for sheet_name in list(all_sheets.keys()):
+        if sheet_name not in wb.sheetnames:
+            continue
+        _fill_sheet_header(wb[sheet_name], client, exo)
+
+    # ── 3. Supprimer toutes les feuilles non exportées ──────────────────────
+    sheets_to_keep = set(all_sheets.keys())
+    for sheet_name in list(wb.sheetnames):
+        if sheet_name not in sheets_to_keep:
+            del wb[sheet_name]
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    raison = (client["raison_sociale"] if client else "client") or "client"
+    client_label = re.sub(r"[^A-Za-z0-9_-]+", "_", raison).strip("_") or "client"
+    filename = "TAFIROHA_%s_%s.xlsx" % (client_label, exo["annee"])
+
+    return Response(
+        buf.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=[("Content-Disposition", 'attachment; filename="%s"' % filename)],
+    )
+
+
 NOT_FOUND = Response("Page introuvable", status="404 Not Found")
 
 # Fichiers statiques téléchargeables depuis l'application (liste blanche par
@@ -4762,6 +4963,72 @@ def view_gestionnaire_new(req, conn, user):
                 conn.commit()
                 return redirect("/admin")
     return Response(render("gestionnaire_new.html", user=user, error=error))
+
+
+def view_admin_audit(req, conn, user):
+    """Audit du portefeuille : nombre de clients actifs par gestionnaire (admin uniquement)."""
+    if user["role"] != "admin":
+        return Response("Accès refusé", status="403 Forbidden")
+
+    rows = conn.execute("""
+        SELECT
+            u.id,
+            u.email,
+            u.created_at                           AS compte_cree,
+            COUNT(DISTINCT c.id)                   AS clients_total,
+            COUNT(DISTINCT e.client_id)            AS clients_actifs,
+            COUNT(e.id)                            AS exercices_total,
+            MAX(e.created_at)                      AS derniere_activite
+        FROM users u
+        LEFT JOIN clients c ON c.created_by = u.id
+        LEFT JOIN exercices e ON e.client_id = c.id
+        WHERE u.role = 'gestionnaire'
+        GROUP BY u.id, u.email
+        ORDER BY clients_actifs DESC, u.email
+    """).fetchall()
+
+    admin_direct = conn.execute("""
+        SELECT
+            COUNT(DISTINCT c.id)        AS clients_total,
+            COUNT(DISTINCT e.client_id) AS clients_actifs,
+            COUNT(e.id)                 AS exercices_total,
+            MAX(e.created_at)           AS derniere_activite
+        FROM clients c
+        LEFT JOIN exercices e ON e.client_id = c.id
+        WHERE c.created_by IS NULL
+    """).fetchone()
+
+    totaux = conn.execute("""
+        SELECT
+            COUNT(DISTINCT c.id)        AS clients_total,
+            COUNT(DISTINCT e.client_id) AS clients_actifs,
+            COUNT(e.id)                 AS exercices_total
+        FROM clients c
+        LEFT JOIN exercices e ON e.client_id = c.id
+    """).fetchone()
+
+    if req.method == "GET" and req.query.get("format") == "csv":
+        import csv, io as _io
+        buf = _io.StringIO()
+        w = csv.writer(buf, delimiter=";")
+        w.writerow(["Gestionnaire", "Compte créé", "Clients créés", "Clients actifs", "Exercices", "Dernière activité"])
+        for r in rows:
+            w.writerow([r["email"], (r["compte_cree"] or "")[:10],
+                        r["clients_total"], r["clients_actifs"],
+                        r["exercices_total"], (r["derniere_activite"] or "")[:10]])
+        w.writerow(["Admin (direct)", "", admin_direct["clients_total"],
+                    admin_direct["clients_actifs"], admin_direct["exercices_total"],
+                    (admin_direct["derniere_activite"] or "")[:10]])
+        w.writerow(["TOTAL", "", totaux["clients_total"], totaux["clients_actifs"], totaux["exercices_total"], ""])
+        return Response(
+            buf.getvalue().encode("utf-8-sig"),
+            content_type="text/csv; charset=utf-8",
+            headers=[("Content-Disposition", 'attachment; filename="audit_gestionnaires.csv"')],
+        )
+
+    return Response(render("admin_audit.html",
+                           user=user, rows=rows,
+                           admin_direct=admin_direct, totaux=totaux))
 
 
 def view_gestionnaires(req, conn, user):
@@ -4968,6 +5235,13 @@ def dispatch(req, conn):
     if path == "/admin/gestionnaires":
         return view_gestionnaires(req, conn, user)
 
+    if path == "/admin/audit":
+        return view_admin_audit(req, conn, user)
+
+    if path.startswith("/admin/users/") and path.endswith("/reset-password"):
+        target_id = int(path.split("/")[3])
+        return view_admin_reset_user_password(req, conn, user, target_id)
+
     if path == "/gestionnaire":
         return view_gestionnaire_dashboard(req, conn, user)
 
@@ -4985,6 +5259,10 @@ def dispatch(req, conn):
     if path.startswith("/client/"):
         client_id = int(path.split("/")[2])
         return view_client_dashboard(req, conn, user, client_id)
+
+    if path.startswith("/exercice/") and path.endswith("/export.xlsx"):
+        exercice_id = int(path.split("/")[2])
+        return view_export_xlsx(req, conn, user, exercice_id)
 
     if path.startswith("/exercice/") and path.endswith("/export.xml"):
         exercice_id = int(path.split("/")[2])
