@@ -5,10 +5,13 @@
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post" action="/login">
     <label>Email</label>
-    <input type="email" name="email" required>
+    <input type="email" name="email" required autofocus>
     <label>Mot de passe</label>
     <input type="password" name="password" required>
-    <button class="btn" type="submit" style="width:100%;">Se connecter</button>
+    <button class="btn" type="submit" style="width:100%;margin-top:.5rem">Se connecter</button>
   </form>
+  <p style="text-align:center;margin-top:1rem;font-size:.9rem">
+    <a href="/forgot-password">Mot de passe oublié ?</a>
+  </p>
 </div>
 {% endblock %}

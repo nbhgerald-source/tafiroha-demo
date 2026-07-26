@@ -472,7 +472,11 @@
     </table>
     <p class="muted">(Dénomination, adresse, NCC, NTD sont gérés au niveau de la fiche client — cf. page Clients.)</p>
     {% for champ, label in sommaire_champs %}
-    {% if champ in sommaire_select_champs %}
+    {% if champ == 'code_activite' %}
+    <p><label>{{ label }}</label>
+    <input type="text" name="texte_{{ champ }}" value="{{ sommaire_info.get(champ, '') }}"
+           list="ciap-datalist" autocomplete="off" placeholder="Saisir code ou libellé CIAP…" style="width:100%"></p>
+    {% elif champ in sommaire_select_champs %}
     <p><label>{{ label }}</label>
     <select name="texte_{{ champ }}">
       <option value=""></option>
@@ -1177,13 +1181,20 @@
       <label style="margin-right:1rem"><input type="radio" name="texte_type_montant_activite" value="CA HT" {% if fiche_r2.get('type_montant_activite','CA HT') == 'CA HT' %}checked{% endif %}> CA HT</label>
       <label><input type="radio" name="texte_type_montant_activite" value="VA" {% if fiche_r2.get('type_montant_activite') == 'VA' %}checked{% endif %}> VA (Valeur Ajoutée)</label>
     </p>
+  <datalist id="ciap-datalist">
+    {% for code, label in ciap_choices %}
+    <option value="{{ code }}">{{ code }} — {{ label }}</option>
+    {% endfor %}
+  </datalist>
     <table>
       <tr><th>Désignation de l'activité</th><th id="th-montant-activite">{{ fiche_r2.get('type_montant_activite', 'CA HT') }}</th><th>Code nomenclature</th><th>% activité dans le {{ fiche_r2.get('type_montant_activite', 'CA HT') }}</th></tr>
       {% for i in fiche_r2_activites_rows %}
       <tr>
         <td><input type="text" name="texte_activite_{{ i }}_designation" value="{{ fiche_r2.get('activite_%d_designation' % i, '') }}" placeholder="{{ 'Divers' if i == (fiche_r2_activites_rows|last) else '' }}"></td>
         <td><input type="text" size="12" name="texte_activite_{{ i }}_montant" value="{{ fiche_r2.get('activite_%d_montant' % i, '') }}"></td>
-        <td><input type="text" size="12" name="texte_activite_{{ i }}_code" value="{{ fiche_r2.get('activite_%d_code' % i, '') }}"></td>
+        <td><input type="text" name="texte_activite_{{ i }}_code"
+               value="{{ fiche_r2.get('activite_%d_code' % i, '') }}"
+               list="ciap-datalist" autocomplete="off" placeholder="Code CIAP" style="width:10rem"></td>
         <td>{{ ('%.2f'|format(fiche_r2_activite_pct[i])) ~ ' %' if fiche_r2_activite_pct[i] is not none else '' }}</td>
       </tr>
       {% endfor %}

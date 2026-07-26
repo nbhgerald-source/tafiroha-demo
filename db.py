@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('admin','gestionnaire','client')),
     client_id INTEGER REFERENCES clients(id),
+    is_default INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -102,6 +103,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id INTEGER NOT NULL REFERENCES users(id),
     created_at TEXT DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0
+);
+
 """
 
 
@@ -144,15 +153,41 @@ def _repair_dangling_users_old_refs(conn):
     conn.commit()
 
 
+
+def _migrate_default_accounts(conn):
+    """Ajoute les colonnes/tables introduites avec les comptes par défaut."""
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "is_default" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            created_at TEXT DEFAULT (datetime('now')),
+            expires_at TEXT NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0
+        );
+    """)
+    conn.commit()
+
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
+    _migrate_default_accounts(conn)
     _repair_dangling_users_old_refs(conn)
-    cur = conn.execute("SELECT COUNT(*) c FROM users WHERE role='admin'")
-    if cur.fetchone()["c"] == 0:
-        create_user(conn, "admin@tafiroha.local", "admin1234", "admin", None)
-        print("Compte admin par défaut créé : admin@tafiroha.local / admin1234")
+    # ── Comptes par défaut ───────────────────────────────────────────────────
+    if not conn.execute("SELECT 1 FROM users WHERE email='admin@tafiroha.local'").fetchone():
+        create_user(conn, "admin@tafiroha.local", "admin1234", "admin", None, is_default=1)
+    if not conn.execute("SELECT 1 FROM users WHERE email='gestionnaire@demo.local'").fetchone():
+        create_user(conn, "gestionnaire@demo.local", "gest1234", "gestionnaire", None, is_default=1)
+    if not conn.execute("SELECT 1 FROM users WHERE email='client@demo.local'").fetchone():
+        demo = conn.execute("SELECT id FROM clients WHERE raison_sociale='Client Démo'").fetchone()
+        if not demo:
+            conn.execute("INSERT INTO clients (raison_sociale) VALUES ('Client Démo')")
+            conn.commit()
+            demo = conn.execute("SELECT id FROM clients WHERE raison_sociale='Client Démo'").fetchone()
+        create_user(conn, "client@demo.local", "demo1234", "client", demo["id"], is_default=1)
     conn.commit()
     conn.close()
 
@@ -173,11 +208,39 @@ def verify_password(password, stored):
     return hash_password(password, salt) == stored
 
 
-def create_user(conn, email, password, role, client_id):
+def create_user(conn, email, password, role, client_id, is_default=0):
     conn.execute(
-        "INSERT INTO users (email, password_hash, role, client_id) VALUES (?,?,?,?)",
-        (email, hash_password(password), role, client_id),
+        "INSERT INTO users (email, password_hash, role, client_id, is_default) VALUES (?,?,?,?,?)",
+        (email, hash_password(password), role, client_id, is_default),
     )
+
+
+def create_reset_token(conn, user_id):
+    import datetime
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.datetime.utcnow() + datetime.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?,?,?)",
+        (token, user_id, expires),
+    )
+    conn.commit()
+    return token
+
+
+def get_valid_reset_token(conn, token):
+    return conn.execute(
+        "SELECT * FROM password_reset_tokens WHERE token=? AND used=0 AND expires_at > datetime('now')",
+        (token,),
+    ).fetchone()
+
+
+def consume_reset_token(conn, token, new_password, user_id):
+    conn.execute(
+        "UPDATE users SET password_hash=?, is_default=0 WHERE id=?",
+        (hash_password(new_password), user_id),
+    )
+    conn.execute("UPDATE password_reset_tokens SET used=1 WHERE token=?", (token,))
+    conn.commit()
 
 
 def create_session(conn, user_id):

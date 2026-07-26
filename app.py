@@ -1585,6 +1585,456 @@ PAYS_SIEGE_CODES = {
     "Russie": "60", "Autres pays": "99",
 }
 
+CIAP_CHOICES = [
+    ('A0101', 'AGRICULTURE VIVRIÈRE'),
+    ('A010101', 'Culture de céréales'),
+    ('A010102', 'Culture de tubercules'),
+    ('A010103', 'Culture de fruits'),
+    ('A010104', 'Culture de légumes et plantes à épices et aromatiques'),
+    ('A0102', "AGRICULTURE DESTINÉE À L'INDUSTRIE OU À L'EXPORTATION"),
+    ('A010201', 'Culture du cacao'),
+    ('A010202', 'Culture du café'),
+    ('A010203', 'Hévéaculture'),
+    ('A010204', 'Culture du coton'),
+    ('A010205', "Culture de la banane douce, de l'ananas et la mangue"),
+    ('A010206', "Culture de l'anacarde"),
+    ('A010207', 'Culture de la canne à sucre'),
+    ('A010208', 'Culture de graines et fruits oléagineux'),
+    ('A010209', 'Horticulture et Reproduction des plantes'),
+    ('A010210', "Culture d'autres produits destinés à l'industrie ou à l'exportation"),
+    ('A0103', 'ÉLEVAGE ET CHASSE'),
+    ('A010301', 'Élevage'),
+    ('A010302', 'Chasse'),
+    ('A0104', "ACTIVITÉS ANNEXES À L'AGRICULTURE, L'ÉLEVAGE ET LA CHASSE"),
+    ('A010401', "Activités de soutien à l'agriculture"),
+    ('A010402', "Activités de soutien à l'élevage"),
+    ('A010403', 'Activités de soutien à la chasse'),
+    ('A0201', 'SYLVICULTURE ET EXPLOITATION FORESTIÈRE'),
+    ('A020101', 'Sylviculture'),
+    ('A020102', 'Exploitation Forestière'),
+    ('A020103', 'Production de charbon de bois'),
+    ('A020200', 'Cueillettes, récolte de produits forestiers non ligneux'),
+    ('A0203', "ACTIVITÉS DE SOUTIEN À LA SYLVICULTURE ET À L'EXPLOITATION FORESTIÈRE"),
+    ('A020300', "Activités de soutien à la sylviculture et à l'exploitation forestière"),
+    ('A0301', 'PÊCHE'),
+    ('A030101', 'Pêche maritime'),
+    ('A030102', 'Pêche en eau douce'),
+    ('A0302', 'AQUACULTURE, PISCICULTURE'),
+    ('A030201', 'Pisciculture'),
+    ('A030202', 'Aquaculture'),
+    ('B0500', 'EXTRACTION DE CHARBON ET DE LIGNITE'),
+    ('B050000', 'Extraction de charbon et de lignite'),
+    ('B0600', "EXTRACTION D'HYDROCARBURES"),
+    ('B060001', 'Extraction de pétrole brut'),
+    ('B060002', 'Extraction de gaz naturel'),
+    ('B0701', 'EXTRACTION DE MINERAIS DE FER'),
+    ('B070100', 'Extraction de minerais de fer'),
+    ('B0702', 'EXTRACTION DE MINERAIS DE MÉTAUX NON FERREUX'),
+    ('B070201', 'Extraction de minerais de métaux précieux'),
+    ('B070202', "Extraction d'autres minerais de métaux non ferreux"),
+    ('B0801', "EXTRACTION DE PIERRES, DE SABLES ET D'ARGILES"),
+    ('B080100', "Extraction de pierres, de sables et d'argiles"),
+    ('B0802', 'ACTIVITÉS EXTRACTIVES N.C.A.'),
+    ('B080201', 'Extraction de phosphates et de sels de potassium, naturels'),
+    ('B080202', "Extractions de minéraux pour l'industrie chimique"),
+    ('B080203', 'Extraction ou production de sel et de natron'),
+    ('B080204', 'Extraction de pierres précieuses et semi-précieuses'),
+    ('B080205', 'Autres extractions'),
+    ('B0901', "ACTIVITÉS DE SOUTIEN À L'EXTRACTION D'HYDROCARBURES"),
+    ('B090100', "Activités de soutien à l'extraction d'hydrocarbures"),
+    ('B0902', 'ACTIVITÉS DE SOUTIEN AUX AUTRES INDUSTRIES EXTRACTIVES'),
+    ('B090200', 'Activités de soutien aux autres industries extractives'),
+    ('C1001', 'ABATTAGE, TRANSFORMATION ET CONSERVATION DE LA VIANDE'),
+    ('C100101', 'Abattage, Transformation et conservation de la viande'),
+    ('C100102', 'Préparation de produits à base de viande'),
+    ('C1002', 'TRANSFORMATION ET CONSERVATION DE POISSONS, CRUSTACÉS ET MOLLUSQUES'),
+    ('C100201', 'Congélation de poissons, crustacés et mollusques'),
+    ('C100202', 'Séchage, salage ou fumage du poisson'),
+    ('C100203', 'Autres transformation et conservation des poissons, crustacés et mollusques'),
+    ('C1003', 'TRANSFORMATION ET CONSERVATION DE FRUITS ET LÉGUMES'),
+    ('C100300', 'Transformation et conservation de fruits et légumes'),
+    ('C1004', "FABRICATION DE CORPS GRAS D'ORIGINE ANIMALE ET VÉGÉTALE"),
+    ('C100400', "Fabrication de corps gras d'origine animale et végétale"),
+    ('C1005', 'TRAVAIL DES GRAINS ; FABRICATION DE PRODUITS AMYLACÉS'),
+    ('C100501', 'Travail des grains'),
+    ('C100502', 'Transformation du manioc et fabrication de produits amylacés'),
+    ('C1006', 'FABRICATION DE PRODUITS ALIMENTAIRES À BASE DE CÉRÉALES N.C.A.'),
+    ('C100601', 'Fabrication de pain et de pâtisseries fraîches'),
+    ('C100602', 'Biscuiterie et pâtisserie de conservation'),
+    ('C100603', 'Fabrication de pâtes alimentaires, de semoules et de produits farineux similaires'),
+    ('C1007', 'TRANSFORMATION DU CACAO ET DU CAFÉ'),
+    ('C100701', 'Transformation du cacao'),
+    ('C100702', 'Transformation du café'),
+    ('C1008', "FABRICATION D'AUTRES PRODUITS ALIMENTAIRES"),
+    ('C100801', 'Fabrication de produits laitiers et de glaces'),
+    ('C100802', 'Fabrication de sucre et de confiserie'),
+    ('C100803', 'Fabrication de thé'),
+    ('C100804', 'Fabrication de condiments et assaisonnements'),
+    ('C100805', "Fabrication d'aliments pour animaux"),
+    ('C100806', 'Fabrication de denrées diverses n.c.a.'),
+    ('C1101', 'FABRICATION DE BOISSONS ALCOOLISÉES'),
+    ('C110101', 'Fabrication de malt et de bière'),
+    ('C110102', "Fabrication d'autres boissons alcoolisées"),
+    ('C1102', "FABRICATION DE BOISSONS NON ALCOOLISÉES ET D'EAUX MINÉRALES"),
+    ('C110200', "Fabrication de boissons non alcoolisées et d'eaux minérales"),
+    ('C1200', 'FABRICATION DE PRODUITS À BASE DE TABAC'),
+    ('C120000', 'Fabrication de produits à base de tabac'),
+    ('C1301', 'FILATURE, TISSAGE ET ENNOBLISSEMENT DE TEXTILE'),
+    ('C130101', 'Filature de textile'),
+    ('C130102', 'Tissage de textile'),
+    ('C130103', 'Ennoblissement de textile'),
+    ('C1302', "FABRICATION D'AUTRES ARTICLES TEXTILES"),
+    ('C130201', 'Fabrication de tapis et moquettes'),
+    ('C130202', "Fabrication d'étoffes à mailles et d'articles textiles non vestimentaires"),
+    ('C1401', 'FABRICATION DE VÊTEMENTS'),
+    ('C140100', 'Fabrication de vêtements'),
+    ('C1402', 'SERVICE DE COUTURE SUR MESURE'),
+    ('C140200', 'Service de couture sur mesure'),
+    ('C1501', "TRAVAIL DU CUIR ; FABRICATION D'ARTICLES DE VOYAGE"),
+    ('C150101', 'Apprêt, tannage des cuirs et fourrures'),
+    ('C150102', "Fabrication d'articles de voyage, de maroquinerie et de sellerie"),
+    ('C1502', 'FABRICATION DE CHAUSSURES ET ARTICLES CHAUSSANTS'),
+    ('C150200', 'Fabrication de chaussures et articles chaussants'),
+    ('C1601', 'TRAVAIL DU BOIS'),
+    ('C160100', 'Sciage, Rabotage'),
+    ('C1602', "FABRICATION D'ARTICLES EN BOIS, LIÈGE, VANNERIE ET SPARTERIE"),
+    ('C160201', 'Fabrication de feuilles de placage, de contreplaqués et de panneaux'),
+    ('C160202', "Fabrication d'ouvrages de charpente, de menuiseries et d'emballages en bois"),
+    ('C160203', "Fabrication d'articles divers en bois ou liège, vannerie et sparterie"),
+    ('C1700', "FABRICATION DE PAPIER, CARTONS ET D'ARTICLES EN PAPIER OU EN CARTON"),
+    ('C170001', 'Fabrication de pâte à papier, de papier et de carton'),
+    ('C170002', 'Fabrication de carton ondulé et emballages en papier ou en carton'),
+    ('C170003', "Fabrication d'articles en papier ou en carton"),
+    ('C1801', 'IMPRIMERIE ET ACTIVITÉS CONNEXES'),
+    ('C180100', 'Imprimerie et activités connexes'),
+    ('C1802', "REPRODUCTION D'ENREGISTREMENTS"),
+    ('C180200', "Reproduction d'enregistrement"),
+    ('C1901', 'RAFFINAGE DU PÉTROLE'),
+    ('C190100', 'Raffinage du pétrole'),
+    ('C1902', 'COKÉFACTION'),
+    ('C190200', 'Cokéfaction'),
+    ('C2001', 'FABRICATION DE PRODUITS CHIMIQUES DE BASE'),
+    ('C200101', "Fabrication de produits azotés et d'engrais"),
+    ('C200102', "Fabrication d'autres produits chimiques de base"),
+    ('C2002', 'FABRICATION DE PRODUITS CHIMIQUES FONCTIONNELS'),
+    ('C200201', "Fabrication de savons, détergents et produits d'entretien"),
+    ('C200202', 'Fabrication de parfums et de produits de toilette'),
+    ('C200203', 'Fabrication de produits agrochimiques'),
+    ('C200204', "Fabrication de peintures et vernis, adjuvants et encres d'imprimerie"),
+    ('C200205', 'Fabrication de fibres artificielles ou synthétiques'),
+    ('C200206', "Fabrication d'autres produits chimiques"),
+    ('C2100', 'FABRICATION DE PRODUITS PHARMACEUTIQUES'),
+    ('C210001', 'Industrie pharmaceutique'),
+    ('C210002', 'Fabrication de médicaments traditionnels'),
+    ('C2201', 'TRAVAIL DU CAOUTCHOUC'),
+    ('C220101', 'Fabrication et rechapage de pneumatiques'),
+    ('C220102', "Fabrication d'autres articles en caoutchouc"),
+    ('C2202', 'TRAVAIL DU PLASTIQUE'),
+    ('C220200', "Fabrication d'articles en plastique"),
+    ('C2301', "FABRICATION DE VERRE ET D'ARTICLES EN VERRE"),
+    ('C230100', "Fabrication de verre et d'articles en verre"),
+    ('C2302', 'FABRICATION DE PRODUITS CÉRAMIQUES'),
+    ('C230201', 'Fabrication de carreaux en céramique'),
+    ('C230202', 'Fabrication de tuiles et briques'),
+    ('C230203', "Fabrication d'autres produits céramiques"),
+    ('C2303', 'FABRICATION DE CIMENTS ET AUTRES PRODUITS MINÉRAUX'),
+    ('C230301', 'Fabrication de ciment, chaux et plâtre'),
+    ('C230302', "Fabrication de matériaux et d'ouvrages en ciment, en béton ou en plâtre ; Travail de la pierre"),
+    ('C230303', 'Fabrication de produits minéraux non métalliques n.c.a.'),
+    ('C2401', "SIDÉRURGIE ET PREMIÈRE TRANSFORMATION DE L'ACIER"),
+    ('C240100', "Sidérurgie et première transformation de l'acier"),
+    ('C2402', 'MÉTALLURGIE ET PREMIÈRE TRANSFORMATION DES MÉTAUX NON FERREUX'),
+    ('C240200', 'Métallurgie et première transformation des métaux non ferreux'),
+    ('C2403', 'FONDERIE'),
+    ('C240300', 'Fonderie'),
+    ('C2501', 'FABRICATION DE STRUCTURES MÉTALLIQUES, CITERNES ET OUVRAGES CHAUDRONNÉS'),
+    ('C250100', 'Fabrication de structures métalliques, citernes et ouvrages chaudronnés'),
+    ('C2502', "FABRICATION D'AUTRES OUVRAGES EN MÉTAUX ; TRAVAIL DES MÉTAUX"),
+    ('C250200', "Fabrication d'autres ouvrages en métaux ; travail des métaux"),
+    ('C2601', "FABRICATION DE COMPOSANTS ÉLECTRONIQUES, D'ORDINATEURS ET DE PÉRIPHÉRIQUES"),
+    ('C260101', 'Fabrication de composants, cartes électroniques et supports magnétiques'),
+    ('C260102', "Fabrication d'ordinateurs et d'équipements périphériques"),
+    ('C2602', "FABRICATION D'ÉQUIPEMENTS DE COMMUNICATION ET DE PRODUITS ÉLECTRONIQUES GRAND PUBLIC"),
+    ('C260201', "Fabrication d'équipements de communication"),
+    ('C260202', 'Fabrication de produits électroniques grand public'),
+    ('C2603', "FABRICATION D'ÉQUIPEMENTS D'IMAGERIE MÉDICALE, DE PRÉCISION, D'OPTIQUE ET D'HORLOGERIE"),
+    ('C260300', "Fabrication d'équipements d'imagerie médicale, de précision, d'optique et d'horlogerie"),
+    ('C2701', 'FABRICATION DE MACHINES ET MATÉRIELS ÉLECTROTECHNIQUES'),
+    ('C270100', 'Fabrication de machines et matériels électrotechniques'),
+    ('C2702', "FABRICATION D'APPAREILS DOMESTIQUES"),
+    ('C270200', "Fabrication d'appareils domestiques"),
+    ('C2703', "FABRICATION D'AUTRES MATÉRIELS ÉLECTRIQUES"),
+    ('C270300', "Fabrication d'autres matériels électriques"),
+    ('C2801', "FABRICATION DE MACHINES D'USAGE GÉNÉRAL"),
+    ('C280100', "Fabrication de machines d'usage général"),
+    ('C2802', "FABRICATION DE MACHINES D'USAGE SPÉCIFIQUE"),
+    ('C280200', "Fabrication de machines d'usage spécifique"),
+    ('C2900', 'CONSTRUCTION DE VÉHICULES AUTOMOBILES'),
+    ('C290000', 'Construction de véhicules automobiles'),
+    ('C3001', 'CONSTRUCTION NAVALE, AÉRONAUTIQUE ET FERROVIAIRE'),
+    ('C300101', 'Construction navale'),
+    ('C300102', 'Construction aéronautique'),
+    ('C300103', 'Construction ferroviaire'),
+    ('C300104', 'Construction de véhicules militaires de combat'),
+    ('C3002', "FABRICATION D'AUTRES ÉQUIPEMENTS DE TRANSPORT"),
+    ('C300200', "Fabrication d'autres équipements de transport"),
+    ('C3100', 'FABRICATION DE MEUBLES ET MATELAS'),
+    ('C310001', 'Fabrication de matelas et sommiers'),
+    ('C310002', 'Fabrication de meubles'),
+    ('C3200', 'AUTRES INDUSTRIES'),
+    ('C320001', 'Fabrication de bijoux'),
+    ('C320002', "Fabrication d'instruments de musique"),
+    ('C320003', 'Activités manufacturières n.c.a'),
+    ('C3301', "RÉPARATION DE MACHINES ET D'ÉQUIPEMENTS PROFESSIONNELS"),
+    ('C330100', "Réparation de machines et d'équipements professionnels"),
+    ('C3302', "INSTALLATION DE MACHINES ET D'ÉQUIPEMENTS PROFESSIONNELS"),
+    ('C330200', "Installation de machines et d'équipements professionnels"),
+    ('D3501', "PRODUCTION, TRANSPORT ET DISTRIBUTION D'ÉLECTRICITÉ"),
+    ('D350100', "Production, transport et distribution d'électricité"),
+    ('D3502', 'PRODUCTION ET DISTRIBUTION DE COMBUSTIBLES GAZEUX ET DE GLACE'),
+    ('D350200', 'Production et distribution de combustibles gazeux et de glace'),
+    ('E3600', "CAPTAGE, TRAITEMENT ET DISTRIBUTION D'EAU"),
+    ('E360000', "Captage, traitement et distribution d'eau"),
+    ('E3700', 'COLLECTE ET TRAITEMENT DES EAUX USÉES'),
+    ('E370000', 'Collecte et traitement des eaux usées'),
+    ('E3800', 'COLLECTE, TRAITEMENT ET ÉLIMINATION DES DÉCHETS ; RÉCUPÉRATION'),
+    ('E380001', 'Collecte, traitement et élimination des déchets'),
+    ('E380002', 'Récupération'),
+    ('E3900', 'DÉPOLLUTION ET GESTION DES DÉCHETS'),
+    ('E390000', 'Dépollution et gestion des déchets'),
+    ('F4101', 'PROMOTION IMMOBILIÈRE'),
+    ('F410100', 'Promotion immobilière'),
+    ('F4102', 'CONSTRUCTION DE BÂTIMENTS COMPLETS'),
+    ('F410200', 'Construction de bâtiments complets'),
+    ('F4200', 'GÉNIE CIVIL'),
+    ('F420001', 'Construction de routes et de voies ferrées'),
+    ('F420002', 'Construction de réseaux et de lignes'),
+    ('F420003', "Construction d'autres ouvrages de génie civil"),
+    ('F4300', 'ACTIVITÉS SPÉCIALISÉES DE CONSTRUCTION'),
+    ('F430001', 'Démolition et préparation des sites'),
+    ('F430002', "Travaux d'installation"),
+    ('F430003', 'Travaux de finition'),
+    ('F430004', 'Autres travaux spécialisés de construction'),
+    ('G4501', 'COMMERCE DE VÉHICULES AUTOMOBILES'),
+    ('G450100', 'Commerce de véhicules automobiles'),
+    ('G4502', 'ENTRETIEN ET RÉPARATION DE VÉHICULES AUTOMOBILES'),
+    ('G450200', 'Entretien et réparation de véhicules automobiles'),
+    ('G4503', "COMMERCE DE PIÈCES DÉTACHÉES ET D'ACCESSOIRES AUTOMOBILES"),
+    ('G450300', "Commerce de pièces détachées et d'accessoires automobiles"),
+    ('G4504', 'COMMERCE ET RÉPARATION DE MOTOCYCLES'),
+    ('G450400', 'Commerce et réparation de motocycles'),
+    ('G4601', 'ACTIVITÉS DES INTERMÉDIAIRES DU COMMERCE DE GROS'),
+    ('G460100', 'Activités des Intermédiaires du commerce de gros'),
+    ('G4602', "COMMERCE DE GROS DE PRODUITS AGRICOLES BRUTS, D'ANIMAUX VIVANTS, PRODUITS ALIMENTAIRES, BOISSONS ET TABAC"),
+    ('G460201', "Commerce de gros de produits agricoles bruts et d'aliments pour animaux"),
+    ('G460202', "Commerce de gros d'animaux vivants, de peaux et cuirs"),
+    ('G460203', 'Commerce de gros de produits alimentaires, boissons et tabacs manufacturés'),
+    ('G4603', 'COMMERCE DE GROS DE BIENS DE CONSOMMATION NON ALIMENTAIRES'),
+    ('G460301', 'Commerce de gros de textiles, habillement et chaussures'),
+    ('G460302', 'Commerce de gros de produits pharmaceutiques et médicaux'),
+    ('G460303', 'Commerce de gros de biens de consommation non alimentaires divers'),
+    ('G4604', 'COMMERCE DE GROS DE PRODUITS INTERMÉDIAIRES NON AGRICOLES'),
+    ('G460401', 'Commerce de gros de carburants et combustibles'),
+    ('G460402', 'Commerce de gros de bois'),
+    ('G460403', 'Commerce de gros de matériaux de construction, quincaillerie et fournitures pour plomberie'),
+    ('G460404', "Commerce de gros d'autres produits intermédiaires non agricoles"),
+    ('G4605', "COMMERCE DE GROS DE MACHINES, D'ÉQUIPEMENTS ET FOURNITURES"),
+    ('G460501', "Commerce de gros de machines, d'équipements et fournitures"),
+    ('G460502', "Commerce de gros d'autres équipements industriels et fournitures diverses"),
+    ('G4606', 'COMMERCE DE GROS NON SPÉCIALISÉ'),
+    ('G460600', 'Commerce de gros non spécialisé'),
+    ('G4701', 'COMMERCE DE DÉTAIL EN MAGASIN NON SPÉCIALISÉ'),
+    ('G470100', 'Commerce de détail en magasin non spécialisé'),
+    ('G4702', 'COMMERCE DE DÉTAIL EN MAGASIN SPÉCIALISÉ'),
+    ('G470201', 'Commerce de détail en magasin spécialisé de produits alimentaires, boissons et tabacs manufacturés'),
+    ('G470202', 'Commerce de détail en magasin spécialisé de produits pharmaceutiques et médicaux, de parfumerie et de produits de beauté'),
+    ('G470203', 'Commerce de détail en magasin spécialisé de textiles, habillement, chaussures et articles en cuir'),
+    ('G470204', "Commerce de détail en magasin spécialisé d'articles et appareils d'équipement domestique"),
+    ('G470205', 'Commerce de détail en magasin spécialisé de quincaillerie, peintures, verre, tapis et revêtement de sols et murs'),
+    ('G470206', 'Commerce de détail en magasin spécialisé de livres, journaux et articles de sport et de loisirs'),
+    ('G470207', "Commerce de détail en magasin spécialisé d'équipements informatiques et de matériels de télécommunication, audio ou vidéo"),
+    ('G470208', 'Commerce de détail en magasin spécialisé de carburants automobiles'),
+    ('G470209', "Commerce de détail en magasin spécialisé d'autres produits n.c.a."),
+    ('G4703', 'COMMERCE DE DÉTAIL HORS MAGASIN'),
+    ('G470301', 'Commerce de détail sur éventaires et marchés de viandes et poissons'),
+    ('G470302', 'Commerce de détail sur éventaires et marchés de fruits et légumes frais'),
+    ('G470303', "Commerce de détail sur éventaires et marchés de céréales, tubercules et d'autres produits alimentaires, boissons et tabacs manufacturés"),
+    ('G470304', 'Commerce de détail sur éventaires et marchés de textiles, habillement, chaussures et articles en cuir'),
+    ('G470305', "Commerce de détail sur éventaires et marchés d'articles non alimentaires divers"),
+    ('G470306', 'Autres commerces de détail hors magasin'),
+    ('H4901', 'TRANSPORTS FERROVIAIRES'),
+    ('H490100', 'Transports ferroviaires'),
+    ('H4902', 'TRANSPORTS ROUTIERS'),
+    ('H490201', 'Transports routiers de passagers'),
+    ('H490202', 'Transports routiers de marchandises'),
+    ('H4903', 'TRANSPORTS PAR CONDUITES'),
+    ('H490300', 'Transports par conduites'),
+    ('H5001', 'TRANSPORTS MARITIMES ET CÔTIERS'),
+    ('H500100', 'Transports maritimes et côtiers'),
+    ('H5002', 'TRANSPORTS FLUVIAUX'),
+    ('H500200', 'Transports fluviaux'),
+    ('H5100', 'TRANSPORTS AÉRIENS'),
+    ('H510001', 'Transports aériens de passagers'),
+    ('H510002', 'Transports aériens de fret et transports spatiaux'),
+    ('H5201', 'ENTREPOSAGE'),
+    ('H520100', 'Entreposage'),
+    ('H5202', 'ACTIVITÉS AUXILIAIRES DES TRANSPORTS'),
+    ('H520201', 'Manutention'),
+    ('H520202', "Exploitation d'infrastructures de transport"),
+    ('H520203', 'Organisation du transport de fret'),
+    ('H5300', 'ACTIVITÉS DE POSTE ET DE COURRIER'),
+    ('H530001', 'Activités de service postal universel'),
+    ('H530002', 'Autres activités de courrier et de distribution'),
+    ('I5500', 'HÉBERGEMENT'),
+    ('I550000', 'Hébergement'),
+    ('I5601', 'RESTAURATION'),
+    ('I560100', 'Restauration'),
+    ('I5602', 'ACTIVITÉS DES DÉBITS DE BOISSONS'),
+    ('I560200', 'Activités des débits de boissons'),
+    ('J5801', "ÉDITION DE LIVRES ET PÉRIODIQUES ET AUTRES ACTIVITÉS D'ÉDITION"),
+    ('J580100', 'Édition de livres et périodiques'),
+    ('J5802', 'ÉDITION DE LOGICIELS'),
+    ('J580200', 'Édition de logiciels'),
+    ('J5901', 'PRODUCTION VIDÉO : CINÉMA ET TÉLÉVISION'),
+    ('J590100', 'Production vidéo : cinéma et télévision'),
+    ('J5902', 'PRODUCTION AUDIO ET ÉDITION MUSICALE'),
+    ('J590200', 'Production audio et édition musicale'),
+    ('J6000', 'PROGRAMMATION TÉLÉVISUELLE ; RADIODIFFUSION'),
+    ('J600001', 'Édition et diffusion de programmes radio'),
+    ('J600002', 'Programmation télévisuelle ; Télédiffusion'),
+    ('J6100', 'TÉLÉCOMMUNICATIONS'),
+    ('J610000', 'Télécommunications'),
+    ('J6200', 'ACTIVITÉS INFORMATIQUES : CONSEIL, PROGRAMMATION'),
+    ('J620001', 'Programmation informatique'),
+    ('J620002', 'Conseil et autres activités informatiques'),
+    ('J6300', "ACTIVITÉS DE FOURNITURE D'INFORMATION"),
+    ('J630001', 'Traitement de données, hébergement et activités connexes ; Création de portails Internet'),
+    ('J630002', "Autres activités liées à l'information"),
+    ('K6401', 'INTERMÉDIATION MONÉTAIRE'),
+    ('K640101', 'Activités de banque centrale'),
+    ('K640102', 'Autres intermédiations monétaires (Banques commerciales)'),
+    ('K6402', 'ACTIVITÉS DES FONDS DE PLACEMENTS, HOLDINGS ET SIMILAIRES'),
+    ('K640200', 'Activités des fonds de placements, holdings et similaires'),
+    ('K6403', 'ACTIVITÉS DE CRÉDITS ET AUTRES INTERMÉDIATIONS NON MONÉTAIRES'),
+    ('K640301', 'Activités de micro finance'),
+    ('K640302', 'Autres activités de crédits et autres intermédiations non monétaires'),
+    ('K6500', 'ASSURANCE'),
+    ('K650001', 'Assurance vie et caisses de retraite'),
+    ('K650002', 'Assurance dommage et réassurance'),
+    ('K6600', "ACTIVITÉS D'AUXILIAIRES FINANCIERS ET D'ASSURANCE"),
+    ('K660001', 'Gestion de Fonds pour tiers'),
+    ('K660002', "Activités de transfert de fonds et d'auxiliaires financiers"),
+    ('K660003', "Activités d'auxiliaires d'assurance"),
+    ('L6801', 'LOCATION IMMOBILIÈRE ET ACTIVITÉS SUR BIENS PROPRES'),
+    ('L680100', 'Location immobilière et activités sur biens propres'),
+    ('L6802', 'ACTIVITÉS DES AGENCES IMMOBILIÈRES'),
+    ('L680200', 'Activités des agences immobilières'),
+    ('M6901', 'ACTIVITÉS JURIDIQUES'),
+    ('M690100', 'Activités juridiques'),
+    ('M6902', 'ACTIVITÉS COMPTABLES'),
+    ('M690200', 'Activités comptables'),
+    ('M7000', 'ACTIVITÉS DES SIÈGES SOCIAUX ; CONSEIL EN GESTION'),
+    ('M700001', 'Activités des sièges sociaux'),
+    ('M700002', 'Conseil de gestion'),
+    ('M7100', "ACTIVITÉS D'ARCHITECTURE, D'INGÉNIERIE ET TECHNIQUES"),
+    ('M710001', "Activités d'architecture et d'ingénierie"),
+    ('M710002', 'Activités de contrôle et analyses techniques'),
+    ('M7201', 'RECHERCHE-DÉVELOPPEMENT EN SCIENCES PHYSIQUES ET NATURELLES'),
+    ('M720100', 'Recherche-développement en sciences physiques et naturelles'),
+    ('M7202', 'RECHERCHE-DÉVELOPPEMENT EN SCIENCES HUMAINES ET SOCIALES'),
+    ('M720200', 'Recherche-développement en sciences humaines et sociales'),
+    ('M7300', 'PUBLICITÉ ET ÉTUDES DE MARCHÉS'),
+    ('M730001', 'Publicité'),
+    ('M730002', 'Études de marché et sondages'),
+    ('M7400', 'AUTRES ACTIVITÉS SPÉCIALISÉES SCIENTIFIQUES ET TECHNIQUES'),
+    ('M740001', 'Activités spécialisées de design'),
+    ('M740002', 'Activités photographiques'),
+    ('M740003', 'Autres activités spécialisées, scientifiques et techniques n.c.a.'),
+    ('M7500', 'ACTIVITÉS VÉTÉRINAIRES'),
+    ('M750000', 'Activités vétérinaires'),
+    ('N7700', 'LOCATION ET LOCATION-BAIL'),
+    ('N770001', 'Location de véhicules automobiles'),
+    ('N770002', "Location de machines et d'équipements n.c.a."),
+    ('N770003', "Location d'articles personnels et domestiques n.c.a."),
+    ('N770004', 'Gestion des droits de propriété industrielle'),
+    ('N7800', 'ACTIVITÉS LIÉES AUX RESSOURCES HUMAINES'),
+    ('N780000', 'Activités liées aux ressources humaines'),
+    ('N7900', 'ACTIVITÉS DES AGENCES DE RÉSERVATION ET VOYAGISTES'),
+    ('N790000', 'Activités des agences de réservation et voyagistes'),
+    ('N8000', 'ENQUÊTES ET SÉCURITÉ'),
+    ('N800000', 'Enquêtes et sécurité'),
+    ('N8100', 'SOUTIEN AUX BÂTIMENTS ; AMÉNAGEMENT PAYSAGER'),
+    ('N810001', 'Activités combinées de soutien aux bâtiments'),
+    ('N810002', 'Activités de nettoyage'),
+    ('N810003', 'Aménagement paysager'),
+    ('N8200', 'ACTIVITÉS DE SOUTIEN AUX ENTREPRISES ; ACTIVITÉS DE BUREAU'),
+    ('N820001', "Activités de bureau, routage et centres d'appels"),
+    ('N820002', 'Organisation de foires, salons et congrès'),
+    ('N820003', 'Activités de soutien aux entreprises n.c.a.'),
+    ('O8401', "ACTIVITÉS D'ADMINISTRATION GÉNÉRALE, ÉCONOMIQUE ET SOCIALE"),
+    ('O840100', "Activités d'administration générale, économique et sociale"),
+    ('O8402', 'ACTIVITÉS DE PRÉROGATIVE PUBLIQUE'),
+    ('O840200', 'Activités de prérogative publique'),
+    ('O8403', 'ACTIVITÉS DE SÉCURITÉ SOCIALE OBLIGATOIRE'),
+    ('O840300', 'Activités de sécurité sociale obligatoire'),
+    ('P8501', 'ENSEIGNEMENT PRÉ-PRIMAIRE ET PRIMAIRE'),
+    ('P850100', 'Enseignement pré-primaire et primaire'),
+    ('P8502', 'ENSEIGNEMENT SECONDAIRE'),
+    ('P850201', 'Enseignement secondaire général'),
+    ('P850202', 'Enseignement secondaire technique ou professionnel'),
+    ('P8503', 'ENSEIGNEMENT SUPÉRIEUR ET POST-SECONDAIRE NON SUPÉRIEUR'),
+    ('P850301', 'Enseignement supérieur'),
+    ('P850302', 'Enseignement post-secondaire non supérieur'),
+    ('P8504', "AUTRES ACTIVITÉS D'ENSEIGNEMENT"),
+    ('P850400', "Autres activités d'enseignement"),
+    ('Q8601', 'ACTIVITÉS HOSPITALIÈRES'),
+    ('Q860100', 'Activités hospitalières'),
+    ('Q8602', 'ACTIVITÉ DES MÉDECINS ET DES DENTISTES'),
+    ('Q860200', 'Activité des médecins et des dentistes'),
+    ('Q8603', 'ACTIVITÉS PARAMÉDICALES ET DE SOUTIEN'),
+    ('Q860301', 'Activités des tradipraticiens'),
+    ('Q860302', 'Autres activités pour la santé humaine'),
+    ('Q8700', "ACTIVITÉS D'HÉBERGEMENT MÉDICO-SOCIAL ET SOCIAL"),
+    ('Q870000', "Activités d'hébergement médico-social et social"),
+    ('Q8800', 'ACTION SOCIALE SANS HÉBERGEMENT'),
+    ('Q880000', 'Action sociale sans hébergement'),
+    ('R9000', 'ACTIVITÉS CRÉATIVES, ARTISTIQUES ET DE SPECTACLE'),
+    ('R900000', 'Activités créatives, artistiques et de spectacle'),
+    ('R9100', 'CONSERVATION ET VALORISATION DU PATRIMOINE'),
+    ('R910000', 'Conservation et valorisation du patrimoine'),
+    ('R9200', "ORGANISATION DE JEUX DE HASARD ET D'ARGENT"),
+    ('R920000', "Organisation de jeux de hasard et d'argent"),
+    ('R9301', 'ACTIVITÉS LIÉES AU SPORT'),
+    ('R930100', 'Activités liées au sport'),
+    ('R9302', 'ACTIVITÉS RÉCRÉATIVES ET DE LOISIRS'),
+    ('R930200', 'Activités récréatives et de loisirs'),
+    ('S9401', 'ACTIVITÉS DES ORGANISATIONS ÉCONOMIQUES, PATRONALES ET PROFESSIONNELLES'),
+    ('S940100', 'Activités des organisations économiques, patronales et professionnelles'),
+    ('S9402', 'ACTIVITÉS DES SYNDICATS DES TRAVAILLEURS'),
+    ('S940200', 'Activités des syndicats des travailleurs'),
+    ('S9403', 'ACTIVITÉS DES AUTRES ORGANISATIONS ASSOCIATIVES'),
+    ('S940301', 'Activités des organisations religieuses'),
+    ('S940302', 'Activités des organisations politiques'),
+    ('S940303', 'Activités des autres organisations associatives'),
+    ('S9501', "RÉPARATION D'ORDINATEURS ET D'ÉQUIPEMENTS DE COMMUNICATION"),
+    ('S950101', "Réparation d'ordinateurs et d'équipements périphériques"),
+    ('S950102', "Réparation d'équipements de communication"),
+    ('S9502', 'RÉPARATION DE BIENS PERSONNELS ET DOMESTIQUES'),
+    ('S950200', 'Réparation de biens personnels et domestiques'),
+    ('S9600', "FOURNITURE D'AUTRES SERVICES PERSONNELS"),
+    ('S960001', 'Lavage et nettoyage de textiles'),
+    ('S960002', 'Coiffure et soins de beauté'),
+    ('S960003', 'Services funéraires'),
+    ('S960004', 'Autres services personnels n.c.a'),
+    ('T9700', "ACTIVITÉS DES MÉNAGES EN TANT QU'EMPLOYEURS DE PERSONNEL DOMESTIQUE"),
+    ('T970000', "Activités des ménages en tant qu'employeurs de personnel domestique"),
+    ('T9800', 'ACTIVITÉS INDIFFÉRENCIÉES AUTOPRODUITES DES MÉNAGES'),
+    ('T980001', 'Activités indifférenciées des ménages en tant que producteurs de biens pour usage propre'),
+    ('T980002', 'Activités indifférenciées des ménages en tant que producteurs de services pour usage propre'),
+    ('U9900', 'ACTIVITÉS DES ORGANISATIONS EXTRATERRITORIALES'),
+    ('U990000', 'Activités des organisations extraterritoriales'),
+]
+
 TYPE_CONTROLE_CHOICES = [
     "Entité sous contrôle public",
     "Entité sous contrôle privé national",
@@ -3580,7 +4030,9 @@ def view_login(req, conn):
         row = conn.execute("SELECT * FROM users WHERE lower(email)=?", (email,)).fetchone()
         if row and db.verify_password(password, row["password_hash"]):
             token = db.create_session(conn, row["id"])
-            if row["role"] == "admin":
+            if dict(row).get("is_default"):
+                dest = "/setup-account"
+            elif row["role"] == "admin":
                 dest = "/admin"
             elif row["role"] == "gestionnaire":
                 dest = "/gestionnaire"
@@ -3589,6 +4041,77 @@ def view_login(req, conn):
             return redirect(dest, set_cookie=token)
         error = "Identifiants invalides."
     return Response(render("login.html", error=error))
+def view_setup_account(req, conn, user):
+    """Première connexion avec un compte par défaut : forcer le changement de credentials."""
+    is_def = dict(user).get("is_default", 0)
+    if not is_def:
+        if user["role"] in ("admin", "gestionnaire"):
+            return redirect("/admin")
+        return redirect("/client/%d" % user["client_id"])
+    error = None
+    if req.method == "POST":
+        new_email    = req.form.get("email", "").strip().lower()
+        new_password = req.form.get("new_password", "")
+        confirm      = req.form.get("confirm_password", "")
+        if not new_email:
+            error = "L'email ne peut pas être vide."
+        elif not new_password:
+            error = "Vous devez définir un mot de passe."
+        elif len(new_password) < 6:
+            error = "Le mot de passe doit contenir au moins 6 caractères."
+        elif new_password != confirm:
+            error = "La confirmation ne correspond pas."
+        else:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE lower(email)=? AND id<>?", (new_email, user["id"])
+            ).fetchone()
+            if existing:
+                error = "Cet email est déjà utilisé par un autre compte."
+            else:
+                conn.execute(
+                    "UPDATE users SET email=?, password_hash=?, is_default=0 WHERE id=?",
+                    (new_email, db.hash_password(new_password), user["id"]),
+                )
+                conn.commit()
+                if user["role"] in ("admin", "gestionnaire"):
+                    return redirect("/admin")
+                return redirect("/client/%d" % user["client_id"])
+    return Response(render("setup_account.html", user=user, error=error))
+
+
+def view_forgot_password(req, conn):
+    reset_url = None
+    info = None
+    if req.method == "POST":
+        email = req.form.get("email", "").strip().lower()
+        row = conn.execute("SELECT * FROM users WHERE lower(email)=?", (email,)).fetchone()
+        if row:
+            token = db.create_reset_token(conn, row["id"])
+            reset_url = "/reset-password/" + token
+        info = "Lien généré." if row else "Si cet email existe, un lien a été généré."
+    return Response(render("forgot_password.html", reset_url=reset_url, info=info))
+
+
+def view_reset_password(req, conn, token):
+    token_row = db.get_valid_reset_token(conn, token)
+    error = None
+    success = False
+    if token_row and req.method == "POST":
+        new_password = req.form.get("new_password", "")
+        confirm      = req.form.get("confirm_password", "")
+        if not new_password:
+            error = "Le mot de passe ne peut pas être vide."
+        elif len(new_password) < 6:
+            error = "Le mot de passe doit contenir au moins 6 caractères."
+        elif new_password != confirm:
+            error = "La confirmation ne correspond pas."
+        else:
+            db.consume_reset_token(conn, token, new_password, token_row["user_id"])
+            success = True
+    return Response(render("reset_password.html",
+                           invalid=(token_row is None), error=error, success=success, token=token))
+
+
 
 
 def view_logout(req, conn):
@@ -4088,6 +4611,7 @@ def view_exercice(req, conn, user, exercice_id):
         fiche_r2_activite_total=fiche_r2_activite_total,
         fiche_r3_dirigeants_rows=fiche_r3_dirigeants_rows,
         fiche_r3_admin_rows=fiche_r3_admin_rows,
+        ciap_choices=CIAP_CHOICES,
     ))
 
 
@@ -4404,6 +4928,12 @@ def dispatch(req, conn):
     if path == "/login":
         return view_login(req, conn)
 
+    if path == "/forgot-password":
+        return view_forgot_password(req, conn)
+
+    if path.startswith("/reset-password/"):
+        return view_reset_password(req, conn, path[len("/reset-password/"):])
+
     user = require_login(req, conn)
 
     if path == "/logout":
@@ -4411,6 +4941,9 @@ def dispatch(req, conn):
 
     if not user:
         return redirect("/login")
+
+    if path == "/setup-account":
+        return view_setup_account(req, conn, user)
 
     if path.startswith("/static/"):
         return view_static(req, conn, path[len("/static/"):])
