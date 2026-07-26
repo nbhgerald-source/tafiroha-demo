@@ -36,7 +36,7 @@ IFERROR_RE = re.compile(r'^IFERROR\((.*),""\)$')
 
 
 def account_table_code(compte):
-    s = str(compte).strip()
+    s = str(compte).strip().replace(" ", "").replace("\xa0", "")
     s = (s + "00000000")[:5]
     return int(s)
 
