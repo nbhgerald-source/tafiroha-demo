@@ -4844,7 +4844,10 @@ def view_export_xlsx(req, conn, user, exercice_id):
     if not exo:
         return Response("Exercice introuvable", status="404 Not Found")
     client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
-    if not user_can_access_client(user, client):
+    is_admin = user["role"] == "admin"
+    is_owner = user["role"] == "gestionnaire" and client is not None and client["created_by"] == user["id"]
+    is_client = user["role"] == "client" and client is not None and user["client_id"] == client["id"]
+    if not (is_admin or is_owner or is_client):
         return Response("Accès refusé", status="403 Forbidden")
 
     balN = load_balance(conn, exercice_id, "N")
