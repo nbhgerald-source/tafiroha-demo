@@ -553,10 +553,19 @@ def controles_att(c, balN):
                 total * c.p["seuil_signification_pct"] / 100.0)
     for r in _dans(balN, 47100, 47500):
         solde = _solde(r)
-        if abs(solde) >= seuil:
-            c.add("ATT-08", "ATT",
-                  "Debiteur ou crediteur divers d'un montant significatif : a justifier",
-                  JUSTIFIER, r.get("compte"), solde)
+        if abs(solde) < seuil:
+            continue
+        # Un solde conforme au sens attendu du compte n'a rien d'anormal :
+        # 4712 "Crediteurs divers" est crediteur par nature. Seuls les comptes
+        # dont le sens est indetermine, ou dont le solde part dans le mauvais
+        # sens, meritent une justification. Les seconds sont deja couverts par
+        # la famille SEN, on ne les redouble pas ici.
+        sens, niveau = resolve_sens(r.get("table", 0))
+        if sens in ("D", "C") and niveau > 0:
+            continue
+        c.add("ATT-08", "ATT",
+              "Compte divers d'un montant significatif, au sens indetermine : "
+              "a justifier", JUSTIFIER, r.get("compte"), solde)
 
 
 # ---------------------------------------------------------------------------
@@ -698,14 +707,41 @@ def controles_imm(c, balN, balN1, manual):
                   "Les %s sont totalement amorties : verifier si les biens sont "
                   "encore en service" % nom, INFO, str(lo // 1000), brut)
 
-    dotation = abs(_somme(balN, 68100, 68200, "mvt_debit"))
-    delta_amort = abs(_somme(balN, 28000, 29000)) - abs(_somme(balN1, 28000, 29000))
+    # Dotation portee en charge (681x) contre dotation creditee aux comptes
+    # d'amortissement (28xx). Ces deux montants doivent etre egaux : c'est la
+    # meme ecriture vue de ses deux cotes.
+    charge = abs(_somme(balN, 68100, 68200, "mvt_debit"))
+    creditee = abs(_somme(balN, 28000, 29000, "mvt_credit"))
     sorties = abs(_somme(balN, 28000, 29000, "mvt_debit"))
-    if dotation > 0 and abs(dotation - delta_amort - sorties) > c.p["seuil_absolu"]:
+    cumul_n = abs(_somme(balN, 28000, 29000))
+    cumul_n1 = abs(_somme(balN1, 28000, 29000))
+    variation = cumul_n - cumul_n1
+    ecart = charge - creditee
+    if (charge or creditee) and abs(ecart) > c.p["seuil_absolu"]:
         c.add("IMM-02", "IMM",
-              "Dotation aux amortissements incoherente avec la variation du cumul : "
-              "dotation %s, variation %s" % (_fmt(dotation), _fmt(delta_amort)),
-              MAJEUR, None, dotation - delta_amort - sorties)
+              "Dotation aux amortissements incoherente. Detail du calcul : "
+              "dotation portee en charge (comptes 681x) %s, dotation creditee aux "
+              "amortissements (comptes 28xx) %s, ecart %s. Pour memoire : cumul N %s, "
+              "cumul N-1 %s, variation %s, sorties de l'exercice %s."
+              % (_fmt(charge), _fmt(creditee), _fmt(ecart),
+                 _fmt(cumul_n), _fmt(cumul_n1), _fmt(variation), _fmt(sorties)),
+              MAJEUR, None, ecart)
+        # Detail par categorie : indique ou se situe l'ecart.
+        for lo, hi, nom in ((28100, 28200, "281 incorporelles"),
+                            (28200, 28300, "282 terrains"),
+                            (28300, 28400, "283 batiments"),
+                            (28400, 28500, "284 materiel"),
+                            (28500, 29000, "285-289 autres")):
+            cn = abs(_somme(balN, lo, hi))
+            c1 = abs(_somme(balN1, lo, hi))
+            dot = abs(_somme(balN, lo, hi, "mvt_credit"))
+            sor = abs(_somme(balN, lo, hi, "mvt_debit"))
+            if not (cn or c1 or dot or sor):
+                continue
+            c.add("IMM-02D", "IMM",
+                  "%s : cumul N %s, cumul N-1 %s, dotation de l'exercice %s, "
+                  "sorties %s" % (nom, _fmt(cn), _fmt(c1), _fmt(dot), _fmt(sor)),
+                  INFO, str(lo // 10), cn - c1)
 
     prod_cession = abs(_somme(balN, 82000, 83000, "mvt_credit"))
     if prod_cession > 0 and sorties == 0:
@@ -1046,8 +1082,12 @@ def _condenser(items):
         groupes.setdefault(a["code"], []).append(a)
     out = []
     for code, lot in groupes.items():
-        plafond = PLAFOND.get(code, PLAFOND_DEFAUT)
-        if len(lot) <= max(plafond, CONDENSATION_MINI):
+        # Un plafond bas ne doit jamais supprimer TOUT le detail : on montre
+        # toujours au moins CONDENSATION_MINI occurrences, les plus grosses,
+        # avant de resumer le reste. Sans ce plancher, un code plafonne a zero
+        # n'affichait qu'une ligne de synthese sans aucun compte.
+        plafond = max(PLAFOND.get(code, PLAFOND_DEFAUT), CONDENSATION_MINI)
+        if len(lot) <= plafond:
             out.extend(lot)
             continue
         lot.sort(key=lambda a: -abs(_n(a.get("montant"))))
