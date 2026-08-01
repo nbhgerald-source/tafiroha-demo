@@ -102,6 +102,12 @@ PLAFOND = {
     "VAR-03": 10,
     "ATT-08": 10,
     "FIS-08": 10,
+    # Lignes de detail par compte : elles accompagnent une anomalie principale,
+    # on en garde suffisamment pour couvrir les cas courants.
+    "SOC-02D": 20,
+    "SOC-03D": 20,
+    "SOC-04D": 20,
+    "IMM-02D": 20,
 }
 
 # En deca de ce nombre d'occurrences, le detail par compte est TOUJOURS affiche,
@@ -634,7 +640,8 @@ def controles_fis(c, balN, resultat):
         solde = _solde(r)
         if c.seuil(solde):
             c.add("FIS-08", "FIS",
-                  "Retenues a la source non reversees a la cloture",
+                  "Retenues a la source non reversees a la cloture : solde de %s sur le "
+                  "compte %s" % (_fmt(solde), r.get("compte")),
                   JUSTIFIER, r.get("compte"), solde)
 
     impot = abs(_somme(balN, 89000, 90000, "mvt_debit"))
@@ -652,30 +659,68 @@ def controles_fis(c, balN, resultat):
 # ---------------------------------------------------------------------------
 # SOC  coherence sociale et paie
 # ---------------------------------------------------------------------------
+def _detail_comptes(c, code, famille, rows, lo, hi, champ, quand, libelle, mini=None):
+    """Emet une ligne informative par compte contribuant a un agregat.
+
+    Sans ce detail, un controle portant sur une plage de comptes affiche un
+    montant sans dire d'ou il vient : le reviseur ne peut ni le verifier ni
+    savoir ou intervenir."""
+    seuil = mini if mini is not None else c.p["seuil_absolu"] / 10.0
+    for r in _dans(rows, lo, hi):
+        v = _solde(r, quand) if champ == "solde" else _n(r.get(champ))
+        if abs(v) < seuil:
+            continue
+        c.add(code, famille, libelle, INFO, r.get("compte"), v)
+
+
 def controles_soc(c, balN):
     p = c.p
     salaires = abs(_somme(balN, 66100, 66400, "mvt_debit"))
     charges = abs(_somme(balN, 66400, 66500, "mvt_debit"))
+
     if charges > 0 and salaires == 0:
         c.add("SOC-01", "SOC",
-              "Charges sociales comptabilisees sans remuneration", MAJEUR, None, charges)
+              "Charges sociales de %s comptabilisees (comptes 664x) sans aucune "
+              "remuneration sur les comptes 661x a 663x" % _fmt(charges),
+              MAJEUR, None, charges)
+
     if salaires > 0 and charges > 0:
         ratio = 100.0 * charges / salaires
         if ratio < p["ratio_social_min"] or ratio > p["ratio_social_max"]:
             c.add("SOC-02", "SOC",
-                  "Ratio charges sociales sur salaires de %.1f %% : hors de l'intervalle "
-                  "attendu (%.0f a %.0f %%)" % (ratio, p["ratio_social_min"], p["ratio_social_max"]),
+                  "Ratio charges sociales sur salaires de %.1f %%, hors de l'intervalle "
+                  "attendu (%.0f a %.0f %%). Calcul : charges sociales %s (comptes 664x) "
+                  "rapportees aux remunerations %s (comptes 661x a 663x). Verifier les "
+                  "exonerations, le personnel detache et les charges comptabilisees "
+                  "ailleurs." % (ratio, p["ratio_social_min"], p["ratio_social_max"],
+                                 _fmt(charges), _fmt(salaires)),
                   JUSTIFIER, None, charges)
+            _detail_comptes(c, "SOC-02D", "SOC", balN, 66400, 66500, "mvt_debit",
+                            None, "Charge sociale de l'exercice")
+            _detail_comptes(c, "SOC-02D", "SOC", balN, 66100, 66400, "mvt_debit",
+                            None, "Remuneration de l'exercice")
+
     if salaires > 0:
         du = abs(_somme(balN, 42200, 42300))
+        mois = du / (salaires / 12.0) if salaires else 0
         if du > salaires / 12.0 * 2:
             c.add("SOC-03", "SOC",
-                  "Remunerations dues superieures a deux mois de salaire", JUSTIFIER, None, du)
+                  "Remunerations dues de %s au bilan (comptes 422x), soit %.1f mois de "
+                  "salaire pour une masse salariale annuelle de %s"
+                  % (_fmt(du), mois, _fmt(salaires)), JUSTIFIER, None, du)
+            _detail_comptes(c, "SOC-03D", "SOC", balN, 42200, 42300, "solde",
+                            "bs", "Remuneration due")
+
     dette_soc = abs(_somme(balN, 43000, 44000))
     if salaires > 0 and dette_soc > salaires / 2:
+        mois = dette_soc / (salaires / 12.0)
         c.add("SOC-04", "SOC",
-              "Dette envers les organismes sociaux anormalement elevee", JUSTIFIER,
-              None, dette_soc)
+              "Dette envers les organismes sociaux de %s (comptes 43x), soit %.1f mois "
+              "de salaire pour une masse salariale annuelle de %s. Verifier les "
+              "cotisations non reversees et les eventuels moratoires."
+              % (_fmt(dette_soc), mois, _fmt(salaires)), JUSTIFIER, None, dette_soc)
+        _detail_comptes(c, "SOC-04D", "SOC", balN, 43000, 44000, "solde",
+                        "bs", "Dette sociale au bilan")
 
 
 # ---------------------------------------------------------------------------
