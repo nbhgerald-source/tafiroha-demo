@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL CHECK(role IN ('admin','gestionnaire','client')),
     client_id INTEGER REFERENCES clients(id),
     is_default INTEGER NOT NULL DEFAULT 0,
+    disabled INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -159,6 +160,8 @@ def _migrate_default_accounts(conn):
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
     if "is_default" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
+    if "disabled" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
             token TEXT PRIMARY KEY,
@@ -170,11 +173,89 @@ def _migrate_default_accounts(conn):
     """)
     conn.commit()
 
+def _migrate_revision(conn):
+    """Tables du module de révision assistée.
+
+    Point critique : les justifications saisies par le collaborateur ne doivent
+    JAMAIS être perdues quand on relance les contrôles après correction de la
+    balance. Le rapprochement se fait sur la clé (exercice_id, code, compte),
+    d'où l'index unique — une anomalie qui réapparaît à l'identique retrouve
+    son traitement."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS revision_anomalies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            exercice_id INTEGER NOT NULL REFERENCES exercices(id),
+            code TEXT NOT NULL,
+            famille TEXT NOT NULL,
+            libelle TEXT NOT NULL,
+            compte TEXT,
+            montant REAL,
+            severite TEXT NOT NULL,
+            statut TEXT NOT NULL DEFAULT 'traiter',
+            commentaire TEXT,
+            traite_par INTEGER REFERENCES users(id),
+            traite_le TEXT,
+            detecte_le TEXT DEFAULT (datetime('now')),
+            vu_le TEXT DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_revision_cle
+            ON revision_anomalies(exercice_id, code, IFNULL(compte,''));
+        CREATE INDEX IF NOT EXISTS idx_revision_exo
+            ON revision_anomalies(exercice_id, severite);
+
+        -- Mémoire des comptes rencontrés, par CLIENT et non par exercice :
+        -- le paramétrage validé une fois se transmet aux exercices suivants.
+        CREATE TABLE IF NOT EXISTS client_comptes (
+            client_id INTEGER NOT NULL REFERENCES clients(id),
+            cle INTEGER NOT NULL,
+            compte_source TEXT,
+            sens_resolu TEXT,
+            niveau_resolution INTEGER,
+            premier_exercice INTEGER,
+            dernier_exercice INTEGER,
+            valide INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (client_id, cle)
+        );
+
+        -- Comptes de régularisation : rattachement d'un compte non reconnu à
+        -- un compte du plan, saisi par l'utilisateur. Clé sur le CLIENT et non
+        -- l'exercice : le rattachement vaut pour tous les exercices suivants.
+        CREATE TABLE IF NOT EXISTS client_compte_mapping (
+            client_id INTEGER NOT NULL REFERENCES clients(id),
+            cle_source INTEGER NOT NULL,
+            cle_cible INTEGER NOT NULL,
+            compte_source TEXT,
+            motif TEXT,
+            cree_par INTEGER REFERENCES users(id),
+            cree_le TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (client_id, cle_source)
+        );
+
+        CREATE TABLE IF NOT EXISTS client_sens_override (
+            client_id INTEGER NOT NULL REFERENCES clients(id),
+            cle INTEGER NOT NULL,
+            sens TEXT NOT NULL,
+            motif TEXT,
+            PRIMARY KEY (client_id, cle)
+        );
+
+        CREATE TABLE IF NOT EXISTS revision_parametres (
+            client_id INTEGER,
+            cle TEXT NOT NULL,
+            valeur TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_revision_param
+            ON revision_parametres(IFNULL(client_id,0), cle);
+    """)
+    conn.commit()
+
+
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
     _migrate_default_accounts(conn)
+    _migrate_revision(conn)
     _repair_dangling_users_old_refs(conn)
     # ── Comptes par défaut ───────────────────────────────────────────────────
     if not conn.execute("SELECT 1 FROM users WHERE email='admin@tafiroha.local'").fetchone():
@@ -188,6 +269,14 @@ def init_db():
             conn.commit()
             demo = conn.execute("SELECT id FROM clients WHERE raison_sociale='Client Démo'").fetchone()
         create_user(conn, "client@demo.local", "demo1234", "client", demo["id"], is_default=1)
+    # Compte demo public : pas de setup-account requis
+    if not conn.execute("SELECT 1 FROM users WHERE email='clientdemo@tafiroha.com'").fetchone():
+        demo = conn.execute("SELECT id FROM clients WHERE raison_sociale='Client Démo'").fetchone()
+        if not demo:
+            conn.execute("INSERT INTO clients (raison_sociale) VALUES ('Client Démo')")
+            conn.commit()
+            demo = conn.execute("SELECT id FROM clients WHERE raison_sociale='Client Démo'").fetchone()
+        create_user(conn, "clientdemo@tafiroha.com", "demo2025", "client", demo["id"], is_default=0)
     conn.commit()
     conn.close()
 

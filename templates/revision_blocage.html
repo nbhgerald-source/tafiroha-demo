@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:40px auto;">
+  <h2>Export XML suspendu</h2>
+  <div style="background:#fdecea;border-left:4px solid #e74c3c;padding:12px 16px;border-radius:4px;line-height:1.6">
+    <strong>{{ nb }} anomalie{{ 's' if nb > 1 }} bloquante{{ 's' if nb > 1 }}
+    n'{{ 'ont' if nb > 1 else 'a' }} pas encore été traitée{{ 's' if nb > 1 }}</strong>
+    sur l'exercice {{ exo['annee'] }} de {{ client['raison_sociale'] }}.
+  </div>
+  <p style="line-height:1.6;margin-top:1rem">
+    Une anomalie bloquante signale une erreur certaine : le fichier produit serait
+    rejeté par le portail e-impôts, ou accepté avec des états financiers faux.
+    Corrigez la balance, ou justifiez chaque point depuis la page de révision.
+  </p>
+  <div style="margin-top:1.4rem;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <a class="btn" href="/exercice/{{ exo['id'] }}/revision">Ouvrir la révision</a>
+    <a href="/exercice/{{ exo['id'] }}">← Retour à l'exercice</a>
+  </div>
+  <hr style="margin:1.6rem 0;border:none;border-top:1px solid #e5e8e8">
+  <p class="muted" style="font-size:13px;line-height:1.5">
+    Si vous devez malgré tout produire le fichier — dépôt de test, contrôle de forme —
+    vous pouvez forcer l'export. Le fichier obtenu ne doit pas être déposé en l'état.
+  </p>
+  <a class="btn" href="/exercice/{{ exo['id'] }}/export.xml?force=1"
+     style="background:#888;font-size:13px"
+     onclick="return confirm('Produire le fichier malgré {{ nb }} anomalie(s) bloquante(s) ?');">
+    Forcer l'export
+  </a>
+</div>
+{% endblock %}

@@ -24,6 +24,12 @@
       <td class="muted">{{ u['created_at'][:10] if u['created_at'] else '—' }}</td>
       <td style="white-space:nowrap">
         <a class="btn" href="/admin/users/{{ u['id'] }}/reset-password" style="font-size:12px;padding:4px 10px;background:#555;margin-right:4px;">Réinitialiser mdp</a>
+        <form method="post" action="/admin/users/{{ u['id'] }}/toggle-active" style="display:inline;margin-right:4px;"
+              onsubmit="return confirm('{% if u['disabled'] %}Réactiver ce compte ?{% else %}Désactiver ce compte ?{% endif %}');">
+          <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:{% if u['disabled'] %}#1e8449{% else %}#e67e22{% endif %};">
+            {% if u['disabled'] %}Réactiver{% else %}Désactiver{% endif %}
+          </button>
+        </form>
         <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer cet utilisateur ?');">
           <input type="hidden" name="action" value="delete">
           <input type="hidden" name="user_id" value="{{ u['id'] }}">

@@ -25,6 +25,7 @@ import openpyxl
 import db
 import calc_engine as ce
 import xml_engine as xe
+import revision
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 jinja_env = Environment(loader=FileSystemLoader(os.path.join(BASE_DIR, "templates")))
@@ -4029,17 +4030,21 @@ def view_login(req, conn):
         password = req.form.get("password", "")
         row = conn.execute("SELECT * FROM users WHERE lower(email)=?", (email,)).fetchone()
         if row and db.verify_password(password, row["password_hash"]):
-            token = db.create_session(conn, row["id"])
-            if dict(row).get("is_default"):
-                dest = "/setup-account"
-            elif row["role"] == "admin":
-                dest = "/admin"
-            elif row["role"] == "gestionnaire":
-                dest = "/gestionnaire"
+            if dict(row).get("disabled"):
+                error = "Compte désactivé. Contactez l'administrateur."
             else:
-                dest = "/client/%d" % row["client_id"]
-            return redirect(dest, set_cookie=token)
-        error = "Identifiants invalides."
+                token = db.create_session(conn, row["id"])
+                if dict(row).get("is_default"):
+                    dest = "/setup-account"
+                elif row["role"] == "admin":
+                    dest = "/admin"
+                elif row["role"] == "gestionnaire":
+                    dest = "/gestionnaire"
+                else:
+                    dest = "/client/%d" % row["client_id"]
+                return redirect(dest, set_cookie=token)
+        if not error:
+            error = "Identifiants invalides."
     return Response(render("login.html", error=error))
 def view_setup_account(req, conn, user):
     """Première connexion avec un compte par défaut : forcer le changement de credentials."""
@@ -4142,7 +4147,7 @@ def view_admin_reset_user_password(req, conn, user, target_id):
             error = "La confirmation ne correspond pas."
         else:
             conn.execute(
-                "UPDATE users SET password_hash=?, is_default=1 WHERE id=?",
+                "UPDATE users SET password_hash=?, is_default=0 WHERE id=?",
                 (db.hash_password(new_password), target_id),
             )
             conn.commit()
@@ -4150,6 +4155,330 @@ def view_admin_reset_user_password(req, conn, user, target_id):
     return Response(render("reset_user_password.html",
                            user=user, target_user=target,
                            back_url=back_url, error=error, success=success))
+
+
+def view_admin_toggle_user(req, conn, user, target_id):
+    """Désactiver / réactiver un compte gestionnaire ou client (admin uniquement)."""
+    if user["role"] != "admin":
+        return Response("Accès refusé", status="403 Forbidden")
+    if req.method != "POST":
+        return Response("Méthode non autorisée", status="405 Method Not Allowed")
+    target = conn.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
+    if not target:
+        return Response("Utilisateur introuvable", status="404 Not Found")
+    if target["role"] == "admin":
+        return Response("Impossible de désactiver le compte administrateur.", status="403 Forbidden")
+    new_disabled = 0 if dict(target).get("disabled") else 1
+    conn.execute("UPDATE users SET disabled=? WHERE id=?", (new_disabled, target_id))
+    conn.commit()
+    if target["role"] == "gestionnaire":
+        return redirect("/admin/gestionnaires")
+    if target["role"] == "client" and target["client_id"]:
+        return redirect("/client/%d/users" % target["client_id"])
+    return redirect("/admin")
+
+
+def _revision_params(conn, client_id):
+    p = dict(revision.DEFAUTS)
+    try:
+        rows = conn.execute(
+            "SELECT cle, valeur FROM revision_parametres "
+            "WHERE client_id IS NULL OR client_id=? ORDER BY client_id IS NULL DESC",
+            (client_id,),
+        ).fetchall()
+        for r in rows:
+            try:
+                p[r["cle"]] = float(r["valeur"])
+            except (TypeError, ValueError):
+                p[r["cle"]] = r["valeur"]
+    except Exception:
+        pass
+    return p
+
+
+def _revision_overrides(conn, client_id):
+    try:
+        rows = conn.execute(
+            "SELECT cle, sens FROM client_sens_override WHERE client_id=?", (client_id,)
+        ).fetchall()
+        return {int(r["cle"]): r["sens"] for r in rows}
+    except Exception:
+        return {}
+
+
+def _revision_mappings(conn, client_id):
+    """Comptes de regularisation saisis par l'utilisateur, conserves d'un
+    exercice a l'autre."""
+    try:
+        rows = conn.execute(
+            "SELECT cle_source, cle_cible FROM client_compte_mapping WHERE client_id=?",
+            (client_id,),
+        ).fetchall()
+        return {int(r["cle_source"]): int(r["cle_cible"]) for r in rows}
+    except Exception:
+        return {}
+
+
+def _enregistrer_mapping(conn, client_id, compte_source, compte_cible, user_id):
+    """Rattache un compte non reconnu a un compte du plan. Retourne un message."""
+    src = "".join(ch for ch in str(compte_source or "") if ch.isdigit())
+    cib = "".join(ch for ch in str(compte_cible or "") if ch.isdigit())
+    if not src or not cib:
+        return "Numéro de compte invalide."
+    cle_src = revision._key4(int((src + "00000000")[:5]))
+    cle_cib = revision._key4(int((cib + "00000000")[:5]))
+    sens, niveau = revision.resolve_sens(int((cib + "00000000")[:5]))
+    if niveau == 0:
+        return ("Le compte de régularisation %s n'existe pas non plus au plan "
+                "comptable : choisissez un compte reconnu." % compte_cible)
+    conn.execute(
+        "INSERT INTO client_compte_mapping "
+        "(client_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
+        "ON CONFLICT(client_id, cle_source) DO UPDATE SET "
+        "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
+        (client_id, cle_src, cle_cib, str(compte_source), user_id),
+    )
+    conn.commit()
+    return ("Compte %s rattaché à %s (sens %s). Le rattachement s'appliquera aussi "
+            "aux exercices suivants." % (compte_source, compte_cible, sens))
+
+
+def lancer_revision(conn, exercice_id, exo, client):
+    """Execute les controles et synchronise la table des anomalies.
+
+    Regle intangible : une anomalie deja justifiee qui reapparait a l'identique
+    conserve son statut et son commentaire. Sans cela le collaborateur refait
+    son travail a chaque reimport de balance, et abandonne le module."""
+    balN = load_balance(conn, exercice_id, "N")
+    balN1 = load_balance(conn, exercice_id, "N1")
+    tftn = load_tft_detail(conn, exercice_id, "N")
+    tftn1 = load_tft_detail(conn, exercice_id, "N1")
+    bilan = ce.compute_sheet("BILAN", balN, balN1) if balN else {}
+    resultat = ce.compute_sheet("RESULTAT", balN, balN1) if balN else {}
+    tft = ce.compute_sheet("TFT", balN, balN1, tftn, tftn1) if balN else {}
+    manual = load_note3_manual(conn, exercice_id) or {}
+
+    anomalies = revision.run_controls(
+        balN, balN1, bilan, resultat, tft,
+        manual=manual, client=client, exo=exo,
+        sheets_raw=ce.SHEETS_RAW,
+        params=_revision_params(conn, client["id"] if client else None),
+        overrides=_revision_overrides(conn, client["id"] if client else None),
+        mappings=_revision_mappings(conn, client["id"] if client else None),
+        notes=_notes_pour_revision(balN, balN1),
+    )
+
+    vues = set()
+    for a in anomalies:
+        cle = (a["code"], a["compte"] or "")
+        vues.add(cle)
+        existe = conn.execute(
+            "SELECT id FROM revision_anomalies "
+            "WHERE exercice_id=? AND code=? AND IFNULL(compte,'')=?",
+            (exercice_id, a["code"], a["compte"] or ""),
+        ).fetchone()
+        if existe:
+            # on rafraichit le libelle et le montant, on preserve le traitement
+            conn.execute(
+                "UPDATE revision_anomalies SET libelle=?, montant=?, severite=?, "
+                "vu_le=datetime('now') WHERE id=?",
+                (a["libelle"], a["montant"], a["severite"], existe["id"]),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO revision_anomalies "
+                "(exercice_id, code, famille, libelle, compte, montant, severite) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (exercice_id, a["code"], a["famille"], a["libelle"],
+                 a["compte"], a["montant"], a["severite"]),
+            )
+    # anomalies disparues : supprimees seulement si non traitees, sinon on les
+    # bascule en "corrige" pour garder la trace du travail effectue.
+    for r in conn.execute(
+        "SELECT id, code, compte, statut FROM revision_anomalies WHERE exercice_id=?",
+        (exercice_id,),
+    ).fetchall():
+        if (r["code"], r["compte"] or "") in vues:
+            continue
+        if r["statut"] == "traiter":
+            conn.execute("DELETE FROM revision_anomalies WHERE id=?", (r["id"],))
+        else:
+            conn.execute(
+                "UPDATE revision_anomalies SET statut='corrige' WHERE id=?", (r["id"],))
+
+    # memoire des comptes du client
+    if client:
+        annee = exo["annee"] if exo else None
+        for r in (balN or []):
+            cle = revision._key4(r.get("table", 0))
+            sens, niveau = revision.resolve_sens(r.get("table", 0))
+            conn.execute(
+                "INSERT INTO client_comptes "
+                "(client_id, cle, compte_source, sens_resolu, niveau_resolution, "
+                " premier_exercice, dernier_exercice) VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(client_id, cle) DO UPDATE SET dernier_exercice=excluded.dernier_exercice",
+                (client["id"], cle, str(r.get("compte")), sens, niveau, annee, annee),
+            )
+    conn.commit()
+
+
+NOTES_RECOUPEES = ("NOTE 3A", "NOTE 3C", "NOTE 3C BIS", "NOTE 4", "NOTE 6",
+                   "NOTE 7", "NOTE 16A")
+
+
+def _notes_pour_revision(balN, balN1):
+    """Calcule les notes dont le total se recoupe avec la balance (famille ETA)."""
+    out = {}
+    for feuille in NOTES_RECOUPEES:
+        try:
+            out[feuille] = ce.compute_sheet(feuille, balN, balN1)
+        except Exception:
+            pass
+    return out
+
+
+def _revision_detail_complet(conn, exercice_id, exo, client):
+    """Rejoue les controles sans condensation, pour l'export CSV."""
+    balN = load_balance(conn, exercice_id, "N")
+    balN1 = load_balance(conn, exercice_id, "N1")
+    tftn = load_tft_detail(conn, exercice_id, "N")
+    tftn1 = load_tft_detail(conn, exercice_id, "N1")
+    bilan = ce.compute_sheet("BILAN", balN, balN1) if balN else {}
+    resultat = ce.compute_sheet("RESULTAT", balN, balN1) if balN else {}
+    tft = ce.compute_sheet("TFT", balN, balN1, tftn, tftn1) if balN else {}
+    return revision.run_controls(
+        balN, balN1, bilan, resultat, tft,
+        manual=load_note3_manual(conn, exercice_id) or {},
+        client=client, exo=exo, sheets_raw=ce.SHEETS_RAW,
+        params=_revision_params(conn, client["id"] if client else None),
+        overrides=_revision_overrides(conn, client["id"] if client else None),
+        mappings=_revision_mappings(conn, client["id"] if client else None),
+        notes=_notes_pour_revision(balN, balN1),
+        condenser=False,
+    )
+
+
+def charger_anomalies(conn, exercice_id):
+    return conn.execute(
+        "SELECT * FROM revision_anomalies WHERE exercice_id=? "
+        "ORDER BY CASE severite WHEN 'bloquant' THEN 0 WHEN 'majeur' THEN 1 "
+        "WHEN 'justifier' THEN 2 ELSE 3 END, famille, code, compte",
+        (exercice_id,),
+    ).fetchall()
+
+
+def anomalies_bloquantes(conn, exercice_id):
+    """Bloquants non resolus : sert a interdire l'export XML EDI."""
+    return conn.execute(
+        "SELECT COUNT(*) n FROM revision_anomalies WHERE exercice_id=? "
+        "AND severite='bloquant' AND statut='traiter'", (exercice_id,),
+    ).fetchone()["n"]
+
+
+def view_revision(req, conn, user, exercice_id):
+    exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
+    if not exo:
+        return Response("Exercice introuvable", status="404 Not Found")
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
+    is_admin = user["role"] == "admin"
+    is_owner = user["role"] == "gestionnaire" and client is not None and client["created_by"] == user["id"]
+    is_client = user["role"] == "client" and client is not None and user["client_id"] == client["id"]
+    if not (is_admin or is_owner or is_client):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    message = None
+    if req.method == "POST":
+        if req.form.get("relancer"):
+            lancer_revision(conn, exercice_id, exo, client)
+            message = "Contrôles relancés. Les justifications déjà saisies ont été conservées."
+        elif req.form.get("mapping_source"):
+            message = _enregistrer_mapping(
+                conn, client["id"],
+                req.form.get("mapping_source"),
+                req.form.get("mapping_cible"),
+                user["id"],
+            )
+            lancer_revision(conn, exercice_id, exo, client)
+        elif req.form.get("anomalie_id"):
+            aid = int(req.form["anomalie_id"])
+            statut = req.form.get("statut", "traiter")
+            commentaire = (req.form.get("commentaire") or "").strip()
+            if statut in ("justifie", "ignore") and not commentaire:
+                message = "Un commentaire est obligatoire pour justifier ou ignorer une anomalie."
+            else:
+                conn.execute(
+                    "UPDATE revision_anomalies SET statut=?, commentaire=?, "
+                    "traite_par=?, traite_le=datetime('now') "
+                    "WHERE id=? AND exercice_id=?",
+                    (statut, commentaire or None, user["id"], aid, exercice_id),
+                )
+                conn.commit()
+                message = "Anomalie mise à jour."
+
+    rows = charger_anomalies(conn, exercice_id)
+    if not rows and req.method == "GET":
+        lancer_revision(conn, exercice_id, exo, client)
+        rows = charger_anomalies(conn, exercice_id)
+
+    if req.query.get("format", [""])[0] == "csv":
+        # L'export recalcule les controles SANS condensation : la page resume
+        # les codes trop volumineux, mais le fichier doit contenir la liste
+        # complete compte par compte, seule exploitable pour la revision.
+        detail = _revision_detail_complet(conn, exercice_id, exo, client)
+        traitements = {(r["code"], r["compte"] or ""): r for r in rows}
+        buf = io.StringIO()
+        w = csv.writer(buf, delimiter=";")
+        w.writerow(["Sévérité", "Famille", "Code", "Compte", "Libellé",
+                    "Montant", "Statut", "Commentaire"])
+        for a in detail:
+            t = traitements.get((a["code"], a["compte"] or ""))
+            w.writerow([
+                revision.SEVERITE_LABEL.get(a["severite"], a["severite"]),
+                revision.FAMILLE_LABEL.get(a["famille"], a["famille"]),
+                a["code"], a["compte"] or "", a["libelle"],
+                "%.2f" % a["montant"] if a["montant"] is not None else "",
+                t["statut"] if t else "traiter",
+                (t["commentaire"] if t else "") or "",
+            ])
+        return Response(
+            buf.getvalue().encode("utf-8-sig"),
+            content_type="text/csv; charset=utf-8",
+            headers=[("Content-Disposition",
+                      'attachment; filename="revision_%s_%s.csv"'
+                      % ((client["raison_sociale"] or "client")[:20].replace(" ", "_"),
+                         exo["annee"]))],
+        )
+
+    f_sev = req.query.get("severite", [""])[0]
+    f_statut = req.query.get("statut", [""])[0]
+    visibles = [r for r in rows
+                if (not f_sev or r["severite"] == f_sev)
+                and (not f_statut or r["statut"] == f_statut)]
+
+    synth = {"bloquant": 0, "majeur": 0, "justifier": 0, "informatif": 0}
+    traitees = 0
+    for r in rows:
+        synth[r["severite"]] = synth.get(r["severite"], 0) + 1
+        if r["statut"] != "traiter":
+            traitees += 1
+    avancement = int(100.0 * traitees / len(rows)) if rows else 100
+
+    familles = []
+    for r in visibles:
+        if not familles or familles[-1]["code"] != r["famille"]:
+            familles.append({"code": r["famille"],
+                             "label": revision.FAMILLE_LABEL.get(r["famille"], r["famille"]),
+                             "lignes": []})
+        familles[-1]["lignes"].append(r)
+
+    return Response(render(
+        "revision.html", user=user, client=client, exo=exo,
+        familles=familles, synthese=synth, total=len(rows),
+        traitees=traitees, avancement=avancement, message=message,
+        bloquants_ouverts=anomalies_bloquantes(conn, exercice_id),
+        f_sev=f_sev, f_statut=f_statut,
+        sev_label=revision.SEVERITE_LABEL,
+    ))
 
 
 def view_logout(req, conn):
@@ -5062,6 +5391,18 @@ def view_export_xml(req, conn, user, exercice_id):
     if not (is_admin or is_owner_gestionnaire or is_client):
         return Response("Accès refusé", status="403 Forbidden")
 
+    # Garde-fou : un fichier XML produit sur une balance comportant une anomalie
+    # bloquante sera rejeté par le portail DGI, ou pire, accepté avec des états
+    # faux. On exige que chaque bloquant ait été corrigé ou justifié.
+    if req.query.get("force", [""])[0] != "1":
+        try:
+            n = anomalies_bloquantes(conn, exercice_id)
+        except Exception:
+            n = 0
+        if n:
+            return Response(render(
+                "revision_blocage.html", user=user, client=client, exo=exo, nb=n))
+
     xml_bytes = xe.generate_xml(conn, exercice_id, dict(client), dict(exo))
     filename  = xe.xml_filename(dict(client), dict(exo))
     return Response(
@@ -5245,6 +5586,10 @@ def dispatch(req, conn):
         target_id = int(path.split("/")[3])
         return view_admin_reset_user_password(req, conn, user, target_id)
 
+    if path.startswith("/admin/users/") and path.endswith("/toggle-active"):
+        target_id = int(path.split("/")[3])
+        return view_admin_toggle_user(req, conn, user, target_id)
+
     if path == "/gestionnaire":
         return view_gestionnaire_dashboard(req, conn, user)
 
@@ -5262,6 +5607,10 @@ def dispatch(req, conn):
     if path.startswith("/client/"):
         client_id = int(path.split("/")[2])
         return view_client_dashboard(req, conn, user, client_id)
+
+    if path.startswith("/exercice/") and path.endswith("/revision"):
+        exercice_id = int(path.split("/")[2])
+        return view_revision(req, conn, user, exercice_id)
 
     if path.startswith("/exercice/") and path.endswith("/export.xlsx"):
         exercice_id = int(path.split("/")[2])

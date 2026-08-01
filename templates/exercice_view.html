@@ -336,6 +336,7 @@
     <a href="/client/{{ client['id'] }}">← Historique des exercices</a>
     {% if balN %}
     <a href="#" class="btn no-print" style="margin-left:14px" onclick="window.print();return false;">Télécharger en PDF</a>
+    <a href="/exercice/{{ exo['id'] }}/revision" class="btn no-print" style="margin-left:8px;background:#1a5276;">Réviser le dossier</a>
     <a href="/exercice/{{ exo['id'] }}/export.xlsx" class="btn no-print" style="margin-left:8px">Exporter en Excel</a>
     <a href="/exercice/{{ exo['id'] }}/export.xml" class="btn no-print" style="margin-left:8px">Exporter XML EDI</a>
     {% endif %}

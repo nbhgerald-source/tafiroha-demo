@@ -1,0 +1,15 @@
+{
+  "_commentaire": "Comptes supprimes ou remplaces par le SYSCOHADA revise. Cle = racine du compte supprime (2 a 4 chiffres). 'remplacant' = racine a utiliser desormais, laisser vide si le compte est supprime sans equivalent.",
+
+  "865": {
+    "remplacant": "868",
+    "libelle": "Compte supprime par le SYSCOHADA revise",
+    "severite": "majeur"
+  },
+
+  "20": {
+    "remplacant": "21",
+    "libelle": "Charges immobilisees : classe supprimee par le SYSCOHADA revise, a reclasser en immobilisations incorporelles ou en charges de l'exercice",
+    "severite": "majeur"
+  }
+}

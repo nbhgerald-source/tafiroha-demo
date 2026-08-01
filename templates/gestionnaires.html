@@ -8,15 +8,24 @@
 </div>
 <div class="card">
   <table>
-    <tr><th>Email</th><th>Clients créés</th><th></th></tr>
+    <tr><th>Email</th><th>Clients créés</th><th>Statut</th><th></th></tr>
     {% for g in gestionnaires %}
-    <tr>
-      <td>{{ g['email'] }}</td>
+    <tr{% if g['disabled'] %} style="opacity:0.55;"{% endif %}>
+      <td>{{ g['email'] }}{% if g['disabled'] %} <span class="muted" style="font-size:11px;">(désactivé)</span>{% endif %}</td>
       <td>{{ counts[g['id']] }}</td>
-      <td><a class="btn" href="/admin/users/{{ g['id'] }}/reset-password" style="font-size:12px;padding:4px 10px;background:#555;">Réinitialiser mdp</a></td>
+      <td>{% if g['disabled'] %}<span style="color:#b00020;">Inactif</span>{% else %}<span style="color:#1e8449;">Actif</span>{% endif %}</td>
+      <td style="white-space:nowrap">
+        <a class="btn" href="/admin/users/{{ g['id'] }}/reset-password" style="font-size:12px;padding:4px 10px;background:#555;margin-right:4px;">Réinitialiser mdp</a>
+        <form method="post" action="/admin/users/{{ g['id'] }}/toggle-active" style="display:inline;"
+              onsubmit="return confirm('{% if g['disabled'] %}Réactiver ce compte ?{% else %}Désactiver ce compte ? Le gestionnaire ne pourra plus se connecter.{% endif %}');">
+          <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:{% if g['disabled'] %}#1e8449{% else %}#b00020{% endif %};">
+            {% if g['disabled'] %}Réactiver{% else %}Désactiver{% endif %}
+          </button>
+        </form>
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="3" class="muted">Aucun gestionnaire pour l'instant.</td></tr>
+    <tr><td colspan="4" class="muted">Aucun gestionnaire pour l'instant.</td></tr>
     {% endfor %}
   </table>
 </div>
