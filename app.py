@@ -243,6 +243,52 @@ def require_login(req, conn):
     return user
 
 
+def user_client_ids(conn, user):
+    """Ensemble des clients accessibles a un utilisateur de role "client".
+
+    La table user_clients fait foi. users.client_id reste retourne en secours
+    pour couvrir le cas ou la migration n'aurait pas encore tourne."""
+    try:
+        rows = conn.execute(
+            "SELECT client_id FROM user_clients WHERE user_id=?", (user["id"],)
+        ).fetchall()
+        ids = {r["client_id"] for r in rows}
+    except Exception:
+        ids = set()
+    if not ids and user["client_id"]:
+        ids = {user["client_id"]}
+    return ids
+
+
+def user_can_access_client(user, client_row, conn=None):
+    """Controle d'acces unique de la version en ligne.
+
+    Admin : tout. Gestionnaire : les clients qu'il a crees (created_by).
+    Client : les clients auxquels il est rattache dans user_clients."""
+    if user["role"] == "admin":
+        return True
+    if client_row is None:
+        return False
+    if user["role"] == "gestionnaire":
+        return client_row["created_by"] == user["id"]
+    if conn is not None:
+        return client_row["id"] in user_client_ids(conn, user)
+    return user["client_id"] == client_row["id"]
+
+
+def destination_client(conn, user):
+    """Ou envoyer un utilisateur de role client apres connexion.
+
+    Rattache a un seul client : directement sur sa fiche, comportement
+    historique inchange. Rattache a plusieurs : sur la page de choix."""
+    ids = user_client_ids(conn, user)
+    if len(ids) > 1:
+        return "/mes-clients"
+    if ids:
+        return "/client/%d" % sorted(ids)[0]
+    return "/mes-clients"
+
+
 def parse_csv_balance(file_bytes):
     """CSV attendu : compte;designation;be_debit;be_credit;mvt_debit;mvt_credit;bs_debit;bs_credit"""
     text = file_bytes.decode("utf-8-sig", errors="replace")
@@ -4052,7 +4098,7 @@ def view_setup_account(req, conn, user):
     if not is_def:
         if user["role"] in ("admin", "gestionnaire"):
             return redirect("/admin")
-        return redirect("/client/%d" % user["client_id"])
+        return redirect(destination_client(conn, user))
     error = None
     if req.method == "POST":
         new_email    = req.form.get("email", "").strip().lower()
@@ -4080,7 +4126,7 @@ def view_setup_account(req, conn, user):
                 conn.commit()
                 if user["role"] in ("admin", "gestionnaire"):
                     return redirect("/admin")
-                return redirect("/client/%d" % user["client_id"])
+                return redirect(destination_client(conn, user))
     return Response(render("setup_account.html", user=user, error=error))
 
 
@@ -4380,10 +4426,7 @@ def view_revision(req, conn, user, exercice_id):
     if not exo:
         return Response("Exercice introuvable", status="404 Not Found")
     client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
-    is_admin = user["role"] == "admin"
-    is_owner = user["role"] == "gestionnaire" and client is not None and client["created_by"] == user["id"]
-    is_client = user["role"] == "client" and client is not None and user["client_id"] == client["id"]
-    if not (is_admin or is_owner or is_client):
+    if not user_can_access_client(user, client, conn):
         return Response("Accès refusé", status="403 Forbidden")
 
     message = None
@@ -4481,6 +4524,94 @@ def view_revision(req, conn, user, exercice_id):
     ))
 
 
+def view_mes_clients(req, conn, user):
+    """Page de choix pour un utilisateur rattache a plusieurs dossiers."""
+    if user["role"] != "client":
+        return redirect("/admin")
+    ids = user_client_ids(conn, user)
+    if not ids:
+        return Response(render("mes_clients.html", user=user, clients=[], counts={}))
+    marques = ",".join("?" * len(ids))
+    clients = conn.execute(
+        "SELECT * FROM clients WHERE id IN (%s) ORDER BY raison_sociale" % marques,
+        tuple(sorted(ids)),
+    ).fetchall()
+    counts = {}
+    for c in clients:
+        counts[c["id"]] = conn.execute(
+            "SELECT COUNT(*) n FROM exercices WHERE client_id=?", (c["id"],)
+        ).fetchone()["n"]
+    return Response(render("mes_clients.html", user=user, clients=clients, counts=counts))
+
+
+def view_user_clients(req, conn, user, target_id):
+    """Modifier les dossiers accessibles a un compte client, apres creation."""
+    if user["role"] not in ("admin", "gestionnaire"):
+        return Response("Accès refusé", status="403 Forbidden")
+    target = conn.execute(
+        "SELECT * FROM users WHERE id=? AND role='client'", (target_id,)
+    ).fetchone()
+    if not target:
+        return Response("Utilisateur introuvable", status="404 Not Found")
+
+    clients = _clients_visibles(conn, user)
+    autorises = {c["id"] for c in clients}
+    # Un gestionnaire ne peut agir que sur un compte rattache a l'un de ses
+    # dossiers : sans ce garde-fou, il pourrait modifier les acces d'un compte
+    # appartenant a un autre cabinet en devinant son identifiant.
+    if user["role"] != "admin":
+        actuels = user_client_ids(conn, target)
+        if not (actuels & autorises):
+            return Response("Accès refusé", status="403 Forbidden")
+
+    error = None
+    success = None
+    if req.method == "POST":
+        coches = set()
+        for k, v in req.form.items():
+            if k.startswith("acces_") and v:
+                try:
+                    cid = int(k[len("acces_"):])
+                except ValueError:
+                    continue
+                if cid in autorises:
+                    coches.add(cid)
+        if not coches:
+            error = "Sélectionnez au moins un dossier, ou désactivez le compte."
+        else:
+            # On ne touche qu'aux dossiers visibles par l'utilisateur courant :
+            # les rattachements a d'autres cabinets restent intacts.
+            for cid in autorises:
+                if cid in coches:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO user_clients (user_id, client_id) VALUES (?,?)",
+                        (target_id, cid))
+                else:
+                    conn.execute(
+                        "DELETE FROM user_clients WHERE user_id=? AND client_id=?",
+                        (target_id, cid))
+            try:
+                principal = int(req.form.get("principal", "") or 0)
+            except ValueError:
+                principal = 0
+            if principal in coches:
+                conn.execute("UPDATE users SET client_id=? WHERE id=?", (principal, target_id))
+            elif target["client_id"] not in user_client_ids(conn, target):
+                conn.execute("UPDATE users SET client_id=? WHERE id=?",
+                             (sorted(coches)[0], target_id))
+            conn.commit()
+            target = conn.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
+            success = "Accès mis à jour : %d dossier%s." % (
+                len(coches), "s" if len(coches) > 1 else "")
+
+    rattaches = user_client_ids(conn, target)
+    back_url = ("/client/%d/users" % target["client_id"]) if target["client_id"] else "/admin"
+    return Response(render(
+        "user_clients.html", user=user, target_user=target, clients=clients,
+        rattaches=rattaches, back_url=back_url, error=error, success=success,
+    ))
+
+
 def view_logout(req, conn):
     token = req.cookies.get("session")
     db.delete_session(conn, token)
@@ -4541,15 +4672,30 @@ def view_client_dashboard(req, conn, user, client_id):
     if not client:
         return Response("Client introuvable", status="404 Not Found")
     # Accès : admin, gestionnaire créateur du client, ou client lui-même
-    is_admin = user["role"] == "admin"
-    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
-    is_client = user["role"] == "client" and user["client_id"] == client_id
-    if not (is_admin or is_owner_gestionnaire or is_client):
+    if not user_can_access_client(user, client, conn):
         return Response("Accès refusé", status="403 Forbidden")
     exercices = conn.execute(
         "SELECT * FROM exercices WHERE client_id=? ORDER BY annee DESC", (client_id,)
     ).fetchall()
     return Response(render("client_dashboard.html", user=user, client=client, exercices=exercices))
+
+
+def _clients_visibles(conn, user, exclure=None):
+    """Clients que l'utilisateur courant a le droit de rattacher."""
+    if user["role"] == "admin":
+        rows = conn.execute("SELECT id, raison_sociale FROM clients ORDER BY raison_sociale").fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, raison_sociale FROM clients WHERE created_by=? ORDER BY raison_sociale",
+            (user["id"],)).fetchall()
+    return [r for r in rows if r["id"] != exclure]
+
+
+def _client_visible(conn, user, client_id):
+    if user["role"] == "admin":
+        return True
+    r = conn.execute("SELECT created_by FROM clients WHERE id=?", (client_id,)).fetchone()
+    return r is not None and r["created_by"] == user["id"]
 
 
 def view_client_users(req, conn, user, client_id):
@@ -4597,17 +4743,61 @@ def view_client_users(req, conn, user, client_id):
             if existing:
                 error = "Un compte avec cet email existe déjà."
             else:
+                # Clients supplementaires coches dans le formulaire. Le client
+                # courant reste le client principal (users.client_id), celui
+                # vers lequel l'utilisateur est redirige apres connexion.
+                autres = []
+                for v in req.form.get_all("clients_sup") if hasattr(req.form, "get_all") else []:
+                    try:
+                        autres.append(int(v))
+                    except (TypeError, ValueError):
+                        pass
+                if not autres:
+                    for k, v in req.form.items():
+                        if k.startswith("client_sup_") and v:
+                            try:
+                                autres.append(int(k[len("client_sup_"):]))
+                            except ValueError:
+                                pass
                 db.create_user(conn, email, password, "client", client_id)
+                new_id = conn.execute(
+                    "SELECT id FROM users WHERE lower(email)=?", (email,)
+                ).fetchone()["id"]
+                cibles = set(autres) | {client_id}
+                cibles = {c for c in cibles if _client_visible(conn, user, c)}
+                for cid in cibles:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO user_clients (user_id, client_id) VALUES (?,?)",
+                        (new_id, cid),
+                    )
                 conn.commit()
-                success = "Utilisateur créé avec succès."
+                if len(cibles) > 1:
+                    success = "Utilisateur créé, rattaché à %d clients." % len(cibles)
+                else:
+                    success = "Utilisateur créé avec succès."
 
+    # Tous les comptes ayant acces a ce client, y compris ceux dont il n'est
+    # pas le client principal.
     users_list = conn.execute(
-        "SELECT id, email, created_at FROM users WHERE client_id=? AND role='client' ORDER BY created_at",
-        (client_id,),
+        "SELECT DISTINCT u.id, u.email, u.created_at, u.disabled, u.client_id "
+        "FROM users u LEFT JOIN user_clients uc ON uc.user_id = u.id "
+        "WHERE u.role='client' AND (u.client_id=? OR uc.client_id=?) "
+        "ORDER BY u.created_at", (client_id, client_id),
     ).fetchall()
+    # Rattachements de chaque compte, pour affichage
+    rattachements = {}
+    for u in users_list:
+        rows = conn.execute(
+            "SELECT c.id, c.raison_sociale FROM user_clients uc "
+            "JOIN clients c ON c.id = uc.client_id WHERE uc.user_id=? "
+            "ORDER BY c.raison_sociale", (u["id"],),
+        ).fetchall()
+        rattachements[u["id"]] = rows
+    autres_clients = _clients_visibles(conn, user, exclure=client_id)
     return Response(render(
         "client_users.html",
         user=user, client=client, users_list=users_list, error=error, success=success,
+        rattachements=rattachements, autres_clients=autres_clients,
     ))
 
 
@@ -4668,10 +4858,7 @@ def view_exercice_new(req, conn, user, client_id):
     client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
     if not client:
         return Response("Client introuvable", status="404 Not Found")
-    is_admin = user["role"] == "admin"
-    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
-    is_client = user["role"] == "client" and user["client_id"] == client_id
-    if not (is_admin or is_owner_gestionnaire or is_client):
+    if not user_can_access_client(user, client, conn):
         return Response("Accès refusé", status="403 Forbidden")
     error = None
     if req.method == "POST":
@@ -4704,10 +4891,7 @@ def view_exercice(req, conn, user, exercice_id):
     if not exo:
         return Response("Exercice introuvable", status="404 Not Found")
     client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
-    is_admin = user["role"] == "admin"
-    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
-    is_client = user["role"] == "client" and user["client_id"] == client["id"]
-    if not (is_admin or is_owner_gestionnaire or is_client):
+    if not user_can_access_client(user, client, conn):
         return Response("Accès refusé", status="403 Forbidden")
 
     upload_msg = None
@@ -5173,10 +5357,7 @@ def view_export_xlsx(req, conn, user, exercice_id):
     if not exo:
         return Response("Exercice introuvable", status="404 Not Found")
     client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
-    is_admin = user["role"] == "admin"
-    is_owner = user["role"] == "gestionnaire" and client is not None and client["created_by"] == user["id"]
-    is_client = user["role"] == "client" and client is not None and user["client_id"] == client["id"]
-    if not (is_admin or is_owner or is_client):
+    if not user_can_access_client(user, client, conn):
         return Response("Accès refusé", status="403 Forbidden")
 
     balN = load_balance(conn, exercice_id, "N")
@@ -5385,10 +5566,7 @@ def view_export_xml(req, conn, user, exercice_id):
     if not exo:
         return Response("Exercice introuvable", status="404 Not Found")
     client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
-    is_admin = user["role"] == "admin"
-    is_owner_gestionnaire = user["role"] == "gestionnaire" and client["created_by"] == user["id"]
-    is_client = user["role"] == "client" and user["client_id"] == client["id"]
-    if not (is_admin or is_owner_gestionnaire or is_client):
+    if not user_can_access_client(user, client, conn):
         return Response("Accès refusé", status="403 Forbidden")
 
     # Garde-fou : un fichier XML produit sur une balance comportant une anomalie
@@ -5565,7 +5743,7 @@ def dispatch(req, conn):
         elif user["role"] == "gestionnaire":
             return redirect("/gestionnaire")
         else:
-            return redirect("/client/%d" % user["client_id"])
+            return redirect(destination_client(conn, user))
 
     if path == "/admin":
         return view_admin_dashboard(req, conn, user)
@@ -5581,6 +5759,10 @@ def dispatch(req, conn):
 
     if path == "/admin/audit":
         return view_admin_audit(req, conn, user)
+
+    if path.startswith("/admin/users/") and path.endswith("/clients"):
+        target_id = int(path.split("/")[3])
+        return view_user_clients(req, conn, user, target_id)
 
     if path.startswith("/admin/users/") and path.endswith("/reset-password"):
         target_id = int(path.split("/")[3])
@@ -5607,6 +5789,9 @@ def dispatch(req, conn):
     if path.startswith("/client/"):
         client_id = int(path.split("/")[2])
         return view_client_dashboard(req, conn, user, client_id)
+
+    if path == "/mes-clients":
+        return view_mes_clients(req, conn, user)
 
     if path.startswith("/exercice/") and path.endswith("/revision"):
         exercice_id = int(path.split("/")[2])

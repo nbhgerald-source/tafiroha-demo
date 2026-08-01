@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Mes dossiers</h2>
+  <p class="muted">
+    {% if clients|length > 1 %}
+      Vous avez accès à {{ clients|length }} dossiers. Choisissez celui que vous souhaitez consulter.
+    {% else %}
+      Sélectionnez le dossier à consulter.
+    {% endif %}
+  </p>
+</div>
+
+<div class="card">
+  {% if clients %}
+  <table>
+    <tr><th>Dossier</th><th>NCC</th><th>Exercices</th><th></th></tr>
+    {% for c in clients %}
+    <tr>
+      <td>{{ c['raison_sociale'] }}</td>
+      <td>{{ c['ncc'] or '—' }}</td>
+      <td>{{ counts.get(c['id'], 0) }}</td>
+      <td><a href="/client/{{ c['id'] }}">Ouvrir →</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">
+    Aucun dossier ne vous est rattaché pour l'instant. Contactez votre cabinet
+    comptable pour obtenir un accès.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

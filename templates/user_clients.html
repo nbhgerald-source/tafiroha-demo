@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Accès de {{ target_user['email'] }}</h2>
+  <p class="muted">
+    Cochez les dossiers auxquels ce compte doit avoir accès. Le dossier marqué
+    <em>principal</em> est celui vers lequel l'utilisateur est dirigé après connexion.
+  </p>
+  <a href="{{ back_url }}">← Retour</a>
+</div>
+
+{% if error %}<div class="card"><div class="error">{{ error }}</div></div>{% endif %}
+{% if success %}<div class="card"><div class="msg">{{ success }}</div></div>{% endif %}
+
+<div class="card" style="max-width:620px">
+  <form method="post">
+    <table>
+      <tr><th style="width:40px"></th><th>Dossier</th><th>NCC</th><th style="width:90px">Principal</th></tr>
+      {% for c in clients %}
+      <tr>
+        <td>
+          <input type="checkbox" name="acces_{{ c['id'] }}" value="1" style="width:auto"
+                 {{ 'checked' if c['id'] in rattaches }}>
+        </td>
+        <td>{{ c['raison_sociale'] }}</td>
+        <td class="muted">{{ c['ncc'] or '—' }}</td>
+        <td style="text-align:center">
+          <input type="radio" name="principal" value="{{ c['id'] }}" style="width:auto"
+                 {{ 'checked' if c['id'] == target_user['client_id'] }}>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">Aucun dossier disponible.</td></tr>
+      {% endfor %}
+    </table>
+    <div style="margin-top:1rem">
+      <button class="btn" type="submit">Enregistrer les accès</button>
+      <a href="{{ back_url }}" class="btn" style="background:#888;margin-left:8px">Annuler</a>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="max-width:620px">
+  <p class="muted" style="font-size:13px;line-height:1.6;margin:0">
+    Retirer un accès n'efface aucune donnée : le compte cesse simplement de voir
+    ce dossier. Un compte sans aucun accès ne peut plus se connecter utilement —
+    il vaut mieux le désactiver depuis la page du client.
+  </p>
+</div>
+{% endblock %}

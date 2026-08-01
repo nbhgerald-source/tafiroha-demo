@@ -250,12 +250,39 @@ def _migrate_revision(conn):
     conn.commit()
 
 
+
+def _migrate_user_clients(conn):
+    """Rattachement d'un utilisateur a PLUSIEURS clients.
+
+    users.client_id est conserve : il designe le client principal, celui vers
+    lequel l'utilisateur est redirige apres connexion. La table de liaison
+    porte l'ensemble des clients accessibles, client principal compris, ce qui
+    permet d'ecrire un controle d'acces unique sans cas particulier.
+
+    La reprise initiale recopie les rattachements existants : aucun utilisateur
+    ne perd l'acces a son client lors de la mise a jour."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS user_clients (
+            user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            client_id INTEGER NOT NULL REFERENCES clients(id),
+            PRIMARY KEY (user_id, client_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_clients_user ON user_clients(user_id);
+    """)
+    conn.execute(
+        "INSERT OR IGNORE INTO user_clients (user_id, client_id) "
+        "SELECT id, client_id FROM users "
+        "WHERE role='client' AND client_id IS NOT NULL"
+    )
+    conn.commit()
+
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
     _migrate_default_accounts(conn)
     _migrate_revision(conn)
+    _migrate_user_clients(conn)
     _repair_dangling_users_old_refs(conn)
     # ── Comptes par défaut ───────────────────────────────────────────────────
     if not conn.execute("SELECT 1 FROM users WHERE email='admin@tafiroha.local'").fetchone():

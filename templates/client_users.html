@@ -15,14 +15,25 @@
   <table>
     <tr>
       <th>Email</th>
+      <th>Accès</th>
       <th>Créé le</th>
       <th></th>
     </tr>
     {% for u in users_list %}
     <tr>
       <td>{{ u['email'] }}</td>
+      <td>
+        {% set ratt = rattachements.get(u['id'], []) %}
+        {% if ratt|length > 1 %}
+          <span style="background:#eaf2f8;color:#1a5276;border:1px solid #85c1e9;border-radius:10px;padding:1px 8px;font-size:11px;">{{ ratt|length }} clients</span>
+          <br><span class="muted" style="font-size:11px;">{{ ratt|map(attribute='raison_sociale')|join(', ') }}</span>
+        {% else %}
+          <span class="muted" style="font-size:12px;">ce client uniquement</span>
+        {% endif %}
+      </td>
       <td class="muted">{{ u['created_at'][:10] if u['created_at'] else '—' }}</td>
       <td style="white-space:nowrap">
+        <a class="btn" href="/admin/users/{{ u['id'] }}/clients" style="font-size:12px;padding:4px 10px;background:#1a5276;margin-right:4px;">Gérer les accès</a>
         <a class="btn" href="/admin/users/{{ u['id'] }}/reset-password" style="font-size:12px;padding:4px 10px;background:#555;margin-right:4px;">Réinitialiser mdp</a>
         <form method="post" action="/admin/users/{{ u['id'] }}/toggle-active" style="display:inline;margin-right:4px;"
               onsubmit="return confirm('{% if u['disabled'] %}Réactiver ce compte ?{% else %}Désactiver ce compte ?{% endif %}');">
@@ -46,13 +57,27 @@
 
 <div class="card" style="max-width:480px;">
   <h3>Ajouter un utilisateur</h3>
-  <p class="muted">Ce compte aura accès en lecture/saisie à ce client uniquement.</p>
+  <p class="muted">Ce compte aura accès en lecture/saisie à {{ client['raison_sociale'] }}.
+    Vous pouvez lui donner accès à d'autres clients de votre portefeuille.</p>
   <form method="post">
     <input type="hidden" name="action" value="add">
     <label>Email</label>
     <input type="email" name="email" required autocomplete="off">
     <label>Mot de passe</label>
     <input type="password" name="password" required autocomplete="new-password">
+
+    {% if autres_clients %}
+    <label style="margin-top:1rem;display:block">Accès à d'autres clients <small class="muted">(facultatif)</small></label>
+    <div style="max-height:190px;overflow:auto;border:1px solid #d5d8dc;border-radius:5px;padding:8px;margin-bottom:.8rem">
+      {% for c in autres_clients %}
+      <label style="display:block;font-weight:400;font-size:13px;padding:2px 0;cursor:pointer">
+        <input type="checkbox" name="client_sup_{{ c['id'] }}" value="1" style="width:auto;margin-right:6px">
+        {{ c['raison_sociale'] }}
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <button class="btn" type="submit">Créer l'utilisateur</button>
   </form>
 </div>
