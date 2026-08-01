@@ -26,6 +26,23 @@
   .cmt { font-size:12px; color:#566573; font-style:italic; }
 </style>
 
+{% if apres_import %}
+<div class="card no-print" style="border-left:4px solid #1e8449;background:#f2f9f4">
+  <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <strong>Balance importée. Contrôles exécutés automatiquement.</strong>
+      <div class="muted" style="font-size:13px;margin-top:4px">
+        Traitez les anomalies ci-dessous avant d'exploiter les états financiers.
+        Vous pouvez les consulter dès maintenant si vous préférez.
+      </div>
+    </div>
+    <a class="btn" href="/exercice/{{ exo['id'] }}" style="background:#52606b;white-space:nowrap">
+      Voir les états financiers →
+    </a>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Révision — {{ client['raison_sociale'] }} · exercice {{ exo['annee'] }}</h2>
   <p class="muted">

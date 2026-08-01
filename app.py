@@ -4514,8 +4514,10 @@ def view_revision(req, conn, user, exercice_id):
                              "lignes": []})
         familles[-1]["lignes"].append(r)
 
+    apres_import = req.query.get("import", [""])[0] == "1"
     return Response(render(
         "revision.html", user=user, client=client, exo=exo,
+        apres_import=apres_import,
         familles=familles, synthese=synth, total=len(rows),
         traitees=traitees, avancement=avancement, message=message,
         bloquants_ouverts=anomalies_bloquantes(conn, exercice_id),
@@ -4903,6 +4905,16 @@ def view_exercice(req, conn, user, exercice_id):
             upload_msg = "Fichier xlsx illisible : impossible de générer les CSV."
         else:
             upload_msg = handle_upload(req, conn, exercice_id)
+            # Import abouti : on lance les controles et on bascule sur la page
+            # de revision. C'est le moment ou les anomalies sont les plus utiles,
+            # avant toute saisie manuelle. La page de revision garde un lien de
+            # retour vers les etats financiers.
+            if import_reussi(upload_msg):
+                try:
+                    lancer_revision(conn, exercice_id, exo, client)
+                    return redirect("/exercice/%d/revision?import=1" % exercice_id)
+                except Exception:
+                    pass
     elif req.method == "POST" and req.form.get("exercice_dates_save"):
         # Dates de debut/fin d'exercice : ne sont pas saisies a la creation de
         # l'exercice (cf. exercice_new.html, qui ne demande que l'annee) -> on
@@ -5164,6 +5176,23 @@ def view_exercice(req, conn, user, exercice_id):
         fiche_r3_admin_rows=fiche_r3_admin_rows,
         ciap_choices=CIAP_CHOICES,
     ))
+
+
+# Messages retournes par handle_upload en cas d'echec : ils ne doivent pas
+# declencher la bascule vers la revision.
+_IMPORT_ECHECS = (
+    "Aucun fichier reçu.",
+    "Fichier CSV vide ou illisible.",
+)
+
+
+def import_reussi(msg):
+    """Vrai si le message de handle_upload correspond a un import abouti."""
+    if not msg:
+        return False
+    if msg in _IMPORT_ECHECS:
+        return False
+    return not msg.startswith("Fichier xlsx illisible")
 
 
 def handle_upload(req, conn, exercice_id):
