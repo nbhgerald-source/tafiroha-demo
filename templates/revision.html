@@ -73,6 +73,8 @@
       <input type="hidden" name="relancer" value="1">
       <button class="btn" type="submit">Relancer les contrôles</button>
     </form>
+    <a class="btn" href="/exercice/{{ exo['id'] }}/rapport.docx"
+       style="margin-left:8px;background:#0e6655;">Rapport pour le client (Word)</a>
     <a class="btn" href="/exercice/{{ exo['id'] }}/revision?format=csv"
        style="margin-left:8px;background:#52606b;">Exporter en CSV</a>
     <a href="/exercice/{{ exo['id'] }}" style="margin-left:12px">← Retour à l'exercice</a>

@@ -4614,6 +4614,36 @@ def view_user_clients(req, conn, user, target_id):
     ))
 
 
+def view_rapport_revision(req, conn, user, exercice_id):
+    """Rapport Word destine au client : points appelant une action de sa part."""
+    exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
+    if not exo:
+        return Response("Exercice introuvable", status="404 Not Found")
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
+    if not user_can_access_client(user, client, conn):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    rows = charger_anomalies(conn, exercice_id)
+    if not rows:
+        lancer_revision(conn, exercice_id, exo, client)
+        rows = charger_anomalies(conn, exercice_id)
+    anomalies = [dict(r) for r in rows]
+    try:
+        import rapport_revision
+        contenu = rapport_revision.generer(anomalies, client, exo)
+        nom = rapport_revision.nom_fichier(client, exo)
+    except ImportError:
+        return Response(
+            "La génération du rapport Word nécessite la bibliothèque python-docx. "
+            "Ajoutez-la aux dépendances de l'application.",
+            status="500 Internal Server Error")
+    return Response(
+        contenu,
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=[("Content-Disposition", 'attachment; filename="%s"' % nom)],
+    )
+
+
 def view_logout(req, conn):
     token = req.cookies.get("session")
     db.delete_session(conn, token)
@@ -5821,6 +5851,10 @@ def dispatch(req, conn):
 
     if path == "/mes-clients":
         return view_mes_clients(req, conn, user)
+
+    if path.startswith("/exercice/") and path.endswith("/rapport.docx"):
+        exercice_id = int(path.split("/")[2])
+        return view_rapport_revision(req, conn, user, exercice_id)
 
     if path.startswith("/exercice/") and path.endswith("/revision"):
         exercice_id = int(path.split("/")[2])
