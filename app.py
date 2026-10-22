@@ -12,6 +12,7 @@ Application WSGI pure Python (stdlib + Jinja2) :
   "TABLE DE CONVERSION" du classeur.
 """
 import csv
+import json
 import io
 import os
 import re
@@ -4518,6 +4519,7 @@ def view_revision(req, conn, user, exercice_id):
     return Response(render(
         "revision.html", user=user, client=client, exo=exo,
         apres_import=apres_import,
+        plan_comptable=plan_comptable_options(),
         familles=familles, synthese=synth, total=len(rows),
         traitees=traitees, avancement=avancement, message=message,
         bloquants_ouverts=anomalies_bloquantes(conn, exercice_id),
@@ -4642,6 +4644,198 @@ def view_rapport_revision(req, conn, user, exercice_id):
         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers=[("Content-Disposition", 'attachment; filename="%s"' % nom)],
     )
+
+
+def _plan_libelles():
+    """Libelles du plan comptable, pour l'affichage et la liste deroulante."""
+    global _PLAN_LIBELLES
+    try:
+        return _PLAN_LIBELLES
+    except NameError:
+        pass
+    chemin = os.path.join(ce.BASE_DIR, "plan_comptable.json")
+    try:
+        with open(chemin, encoding="utf-8") as fh:
+            _PLAN_LIBELLES = json.load(fh)
+    except Exception:
+        _PLAN_LIBELLES = {}
+    return _PLAN_LIBELLES
+
+
+def plan_comptable_options():
+    """Liste (code, libelle) triee, pour les listes deroulantes."""
+    plan = _plan_libelles()
+    return [{"code": k, "libelle": v} for k, v in sorted(plan.items())]
+
+
+def libelle_compte(compte):
+    """Libelle du plan pour un numero de compte, par prefixe decroissant."""
+    plan = _plan_libelles()
+    s = "".join(ch for ch in str(compte or "") if ch.isdigit())
+    if not s:
+        return ""
+    cle = str(revision._key4(int((s + "00000000")[:5])))
+    for n in (4, 3, 2):
+        for k in plan:
+            if k[:n] == cle[:n]:
+                return plan[k]
+    return ""
+
+
+def view_pointage(req, conn, user, exercice_id):
+    """Revue des comptes : pointage compte par compte de la balance."""
+    exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
+    if not exo:
+        return Response("Exercice introuvable", status="404 Not Found")
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (exo["client_id"],)).fetchone()
+    if not user_can_access_client(user, client, conn):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    message = None
+    if req.method == "POST":
+        if req.form.get("reprendre_n1"):
+            message = _reprendre_pointage_n1(conn, exercice_id, exo, user)
+        elif req.form.get("compte"):
+            compte = req.form.get("compte")
+            statut = req.form.get("statut", "revu")
+            commentaire = (req.form.get("commentaire") or "").strip()
+            if statut == "a_revoir":
+                conn.execute(
+                    "DELETE FROM revision_pointage WHERE exercice_id=? AND compte=?",
+                    (exercice_id, compte))
+            else:
+                conn.execute(
+                    "INSERT INTO revision_pointage "
+                    "(exercice_id, compte, statut, commentaire, pointe_par, pointe_le) "
+                    "VALUES (?,?,?,?,?,datetime('now')) "
+                    "ON CONFLICT(exercice_id, compte) DO UPDATE SET "
+                    "statut=excluded.statut, commentaire=excluded.commentaire, "
+                    "pointe_par=excluded.pointe_par, pointe_le=excluded.pointe_le",
+                    (exercice_id, compte, statut, commentaire or None, user["id"]))
+            conn.commit()
+            message = "Compte %s mis à jour." % compte
+
+    balN = load_balance(conn, exercice_id, "N")
+    balN1 = load_balance(conn, exercice_id, "N1")
+    soldes_n1 = {str(r["compte"]): (r["bs_debit"] - r["bs_credit"]) for r in balN1}
+    # build_balance_rows ne conserve pas le libelle saisi dans la balance :
+    # on le relit en base, et on retombe sur le plan comptable s'il est vide.
+    designations = {
+        str(r["compte"]): (r["designation"] or "")
+        for r in conn.execute(
+            "SELECT compte, designation FROM balance_lignes "
+            "WHERE exercice_id=? AND periode='N'", (exercice_id,)).fetchall()
+    }
+
+    pointages = {}
+    for r in conn.execute(
+        "SELECT p.*, u.email FROM revision_pointage p "
+        "LEFT JOIN users u ON u.id = p.pointe_par WHERE p.exercice_id=?",
+        (exercice_id,),
+    ).fetchall():
+        pointages[str(r["compte"])] = r
+
+    # anomalies de revision rattachees a chaque compte
+    anomalies = {}
+    for r in conn.execute(
+        "SELECT compte, severite FROM revision_anomalies "
+        "WHERE exercice_id=? AND compte IS NOT NULL AND statut='traiter'",
+        (exercice_id,),
+    ).fetchall():
+        cle = str(r["compte"])
+        cur = anomalies.get(cle)
+        ordre = {"bloquant": 0, "majeur": 1, "justifier": 2, "informatif": 3}
+        if cur is None or ordre.get(r["severite"], 9) < ordre.get(cur, 9):
+            anomalies[cle] = r["severite"]
+
+    lignes = []
+    for r in balN:
+        cpt = str(r["compte"])
+        sn = r["bs_debit"] - r["bs_credit"]
+        s1 = soldes_n1.get(cpt, 0.0)
+        p = pointages.get(cpt)
+        lignes.append({
+            "compte": cpt,
+            "designation": designations.get(cpt) or libelle_compte(cpt),
+            "solde_n": sn,
+            "solde_n1": s1,
+            "variation": sn - s1,
+            "statut": p["statut"] if p else "a_revoir",
+            "commentaire": (p["commentaire"] if p else "") or "",
+            "par": (p["email"] if p else "") or "",
+            "le": (str(p["pointe_le"])[:10] if p and p["pointe_le"] else ""),
+            "anomalie": anomalies.get(cpt),
+        })
+
+    f_statut = req.query.get("statut", [""])[0]
+    f_anomalie = req.query.get("anomalie", [""])[0] == "1"
+    visibles = [l for l in lignes
+                if (not f_statut or l["statut"] == f_statut)
+                and (not f_anomalie or l["anomalie"])]
+
+    revus = sum(1 for l in lignes if l["statut"] == "revu")
+    reserves = sum(1 for l in lignes if l["statut"] == "reserve")
+    total = len(lignes)
+    avancement = int(100.0 * (revus + reserves) / total) if total else 0
+
+    if req.query.get("format", [""])[0] == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf, delimiter=";")
+        w.writerow(["Compte", "Désignation", "Solde N", "Solde N-1", "Variation",
+                    "Statut", "Commentaire", "Revu par", "Le", "Anomalie"])
+        for l in lignes:
+            w.writerow([l["compte"], l["designation"], "%.2f" % l["solde_n"],
+                        "%.2f" % l["solde_n1"], "%.2f" % l["variation"],
+                        l["statut"], l["commentaire"], l["par"], l["le"],
+                        l["anomalie"] or ""])
+        return Response(
+            buf.getvalue().encode("utf-8-sig"),
+            content_type="text/csv; charset=utf-8",
+            headers=[("Content-Disposition",
+                      'attachment; filename="pointage_%s.csv"' % exo["annee"])])
+
+    return Response(render(
+        "pointage.html", user=user, client=client, exo=exo, lignes=visibles,
+        total=total, revus=revus, reserves=reserves, avancement=avancement,
+        message=message, f_statut=f_statut, f_anomalie=f_anomalie,
+        nb_anomalies=sum(1 for l in lignes if l["anomalie"]),
+    ))
+
+
+def _reprendre_pointage_n1(conn, exercice_id, exo, user):
+    """Reprend le pointage de l'exercice precedent pour les comptes dont le
+    solde n'a pas bouge. Action explicite : un solde qui a varie doit etre
+    revu a nouveau, la reprise automatique serait un contresens."""
+    prec = conn.execute(
+        "SELECT id FROM exercices WHERE client_id=? AND annee=? ",
+        (exo["client_id"], (exo["annee"] or 0) - 1)).fetchone()
+    if not prec:
+        return "Aucun exercice précédent trouvé pour ce client."
+    balN = {str(r["compte"]): r["bs_debit"] - r["bs_credit"]
+            for r in load_balance(conn, exercice_id, "N")}
+    balN1 = {str(r["compte"]): r["bs_debit"] - r["bs_credit"]
+             for r in load_balance(conn, exercice_id, "N1")}
+    repris = 0
+    for r in conn.execute(
+        "SELECT compte, statut, commentaire FROM revision_pointage WHERE exercice_id=?",
+        (prec["id"],)).fetchall():
+        cpt = str(r["compte"])
+        if cpt not in balN:
+            continue
+        if abs(balN.get(cpt, 0.0) - balN1.get(cpt, 0.0)) > 0.5:
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO revision_pointage "
+            "(exercice_id, compte, statut, commentaire, pointe_par, pointe_le) "
+            "VALUES (?,?,?,?,?,datetime('now'))",
+            (exercice_id, cpt, r["statut"],
+             "Repris de l'exercice %d (solde inchangé)" % (exo["annee"] - 1),
+             user["id"]))
+        repris += 1
+    conn.commit()
+    return ("%d compte%s repris de l'exercice précédent (solde inchangé)."
+            % (repris, "s" if repris > 1 else "")) if repris else \
+           "Aucun compte à reprendre : tous les soldes ont varié."
 
 
 def view_logout(req, conn):
@@ -5851,6 +6045,10 @@ def dispatch(req, conn):
 
     if path == "/mes-clients":
         return view_mes_clients(req, conn, user)
+
+    if path.startswith("/exercice/") and path.endswith("/pointage"):
+        exercice_id = int(path.split("/")[2])
+        return view_pointage(req, conn, user, exercice_id)
 
     if path.startswith("/exercice/") and path.endswith("/rapport.docx"):
         exercice_id = int(path.split("/")[2])

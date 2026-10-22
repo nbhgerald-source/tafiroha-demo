@@ -73,6 +73,7 @@
       <input type="hidden" name="relancer" value="1">
       <button class="btn" type="submit">Relancer les contrôles</button>
     </form>
+    <a class="btn" href="/exercice/{{ exo['id'] }}/pointage" style="background:#0e6655;">Revue des comptes</a>
     <a class="btn" href="/exercice/{{ exo['id'] }}/rapport.docx"
        style="margin-left:8px;background:#0e6655;">Rapport pour le client (Word)</a>
     <a class="btn" href="/exercice/{{ exo['id'] }}/revision?format=csv"
@@ -133,8 +134,9 @@
           <form method="post" style="margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap">
             <input type="hidden" name="mapping_source" value="{{ a['compte'] }}">
             <label style="font-size:12px;color:#566573;margin:0">Rattacher au compte</label>
-            <input type="text" name="mapping_cible" placeholder="ex. 868000" required
-                   style="font-size:12px;padding:2px 5px;width:90px">
+            <input type="text" name="mapping_cible" list="plan-comptable" required
+                   placeholder="code ou libellé" autocomplete="off"
+                   style="font-size:12px;padding:2px 5px;width:210px">
             <button class="btn" type="submit" style="font-size:11px;padding:3px 9px;background:#1a5276">
               Enregistrer le rattachement
             </button>
@@ -173,4 +175,10 @@
   <p class="muted">Aucune anomalie ne correspond aux filtres retenus.</p>
 </div>
 {% endfor %}
+
+<datalist id="plan-comptable">
+  {% for c in plan_comptable %}
+  <option value="{{ c['code'] }}">{{ c['code'] }} — {{ c['libelle'] }}</option>
+  {% endfor %}
+</datalist>
 {% endblock %}

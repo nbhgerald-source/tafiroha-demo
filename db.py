@@ -276,6 +276,28 @@ def _migrate_user_clients(conn):
     )
     conn.commit()
 
+
+def _migrate_pointage(conn):
+    """Pointage de la revue des comptes, compte par compte.
+
+    Chaque compte de la balance peut etre marque comme revu, avec l'auteur et
+    la date. Le pointage est attache a l'EXERCICE : une revue vaut pour les
+    chiffres de l'annee, elle ne se reporte pas silencieusement sur l'exercice
+    suivant (une reprise explicite est proposee a l'ecran)."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS revision_pointage (
+            exercice_id INTEGER NOT NULL REFERENCES exercices(id),
+            compte      TEXT NOT NULL,
+            statut      TEXT NOT NULL DEFAULT 'revu',
+            commentaire TEXT,
+            pointe_par  INTEGER REFERENCES users(id),
+            pointe_le   TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (exercice_id, compte)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pointage_exo ON revision_pointage(exercice_id);
+    """)
+    conn.commit()
+
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
@@ -283,6 +305,7 @@ def init_db():
     _migrate_default_accounts(conn)
     _migrate_revision(conn)
     _migrate_user_clients(conn)
+    _migrate_pointage(conn)
     _repair_dangling_users_old_refs(conn)
     # ── Comptes par défaut ───────────────────────────────────────────────────
     if not conn.execute("SELECT 1 FROM users WHERE email='admin@tafiroha.local'").fetchone():
