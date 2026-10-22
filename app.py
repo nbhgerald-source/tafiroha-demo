@@ -477,12 +477,34 @@ def handle_xlsx_to_csv(req):
     )
 
 
+def mappings_exercice(conn, exercice_id):
+    """Codification du client proprietaire de l'exercice.
+
+    Resolue ici plutot qu'a chaque appelant : load_balance est le point de
+    passage unique de la balance vers le moteur de calcul, la codification
+    s'applique donc partout sans toucher aux vues."""
+    try:
+        r = conn.execute(
+            "SELECT client_id FROM exercices WHERE id=?", (exercice_id,)
+        ).fetchone()
+        if not r:
+            return {}
+        rows = conn.execute(
+            "SELECT cle_source, cle_cible FROM client_compte_mapping WHERE client_id=?",
+            (r["client_id"],),
+        ).fetchall()
+        return {int(x["cle_source"]): int(x["cle_cible"]) for x in rows}
+    except Exception:
+        return {}
+
+
 def load_balance(conn, exercice_id, periode):
     rows = conn.execute(
         "SELECT * FROM balance_lignes WHERE exercice_id=? AND periode=? ORDER BY compte",
         (exercice_id, periode),
     ).fetchall()
-    return ce.build_balance_rows([dict(r) for r in rows])
+    return ce.build_balance_rows([dict(r) for r in rows],
+                                 mappings_exercice(conn, exercice_id))
 
 
 def load_tft_detail(conn, exercice_id, periode):
@@ -490,7 +512,8 @@ def load_tft_detail(conn, exercice_id, periode):
         "SELECT * FROM tft_detail_lignes WHERE exercice_id=? AND periode=? ORDER BY compte",
         (exercice_id, periode),
     ).fetchall()
-    return ce.build_balance_rows([dict(r) for r in rows])
+    return ce.build_balance_rows([dict(r) for r in rows],
+                                 mappings_exercice(conn, exercice_id))
 
 
 def load_note3_manual(conn, exercice_id):
@@ -4695,6 +4718,10 @@ def view_pointage(req, conn, user, exercice_id):
     if req.method == "POST":
         if req.form.get("reprendre_n1"):
             message = _reprendre_pointage_n1(conn, exercice_id, exo, user)
+        elif req.form.get("codifier"):
+            message = _enregistrer_mapping(
+                conn, client["id"], req.form.get("codifier"),
+                req.form.get("cible"), user["id"])
         elif req.form.get("compte"):
             compte = req.form.get("compte")
             statut = req.form.get("statut", "revu")
@@ -4748,15 +4775,19 @@ def view_pointage(req, conn, user, exercice_id):
         if cur is None or ordre.get(r["severite"], 9) < ordre.get(cur, 9):
             anomalies[cle] = r["severite"]
 
+    plan = _plan_libelles()
+    mappings = _revision_mappings(conn, client["id"]) if client else {}
+
     lignes = []
     for r in balN:
         cpt = str(r["compte"])
         sn = r["bs_debit"] - r["bs_credit"]
         s1 = soldes_n1.get(cpt, 0.0)
         p = pointages.get(cpt)
+        cle, niveau, origine = revision.resoudre_compte(r.get("table", 0), mappings)
         lignes.append({
             "compte": cpt,
-            "designation": designations.get(cpt) or libelle_compte(cpt),
+            "designation": designations.get(cpt) or "",
             "solde_n": sn,
             "solde_n1": s1,
             "variation": sn - s1,
@@ -4765,13 +4796,22 @@ def view_pointage(req, conn, user, exercice_id):
             "par": (p["email"] if p else "") or "",
             "le": (str(p["pointe_le"])[:10] if p and p["pointe_le"] else ""),
             "anomalie": anomalies.get(cpt),
+            "ohada": str(cle) if cle else "",
+            "ohada_libelle": plan.get(str(cle), "") if cle else "",
+            "codification": origine,
         })
 
     f_statut = req.query.get("statut", [""])[0]
     f_anomalie = req.query.get("anomalie", [""])[0] == "1"
+    f_codif = req.query.get("codification", [""])[0]
     visibles = [l for l in lignes
                 if (not f_statut or l["statut"] == f_statut)
-                and (not f_anomalie or l["anomalie"])]
+                and (not f_anomalie or l["anomalie"])
+                and (not f_codif or l["codification"] == f_codif)]
+    codif = {"exact": 0, "racine": 0, "manuel": 0, "inconnu": 0}
+    for l in lignes:
+        codif[l["codification"]] = codif.get(l["codification"], 0) + 1
+    a_codifier = codif["racine"] + codif["inconnu"]
 
     revus = sum(1 for l in lignes if l["statut"] == "revu")
     reserves = sum(1 for l in lignes if l["statut"] == "reserve")
@@ -4781,10 +4821,12 @@ def view_pointage(req, conn, user, exercice_id):
     if req.query.get("format", [""])[0] == "csv":
         buf = io.StringIO()
         w = csv.writer(buf, delimiter=";")
-        w.writerow(["Compte", "Désignation", "Solde N", "Solde N-1", "Variation",
-                    "Statut", "Commentaire", "Revu par", "Le", "Anomalie"])
+        w.writerow(["Compte", "Désignation", "Compte OHADA", "Libellé OHADA",
+                    "Codification", "Solde N", "Solde N-1", "Variation",
+                    "Statut revue", "Commentaire", "Revu par", "Le", "Anomalie"])
         for l in lignes:
-            w.writerow([l["compte"], l["designation"], "%.2f" % l["solde_n"],
+            w.writerow([l["compte"], l["designation"], l["ohada"], l["ohada_libelle"],
+                        l["codification"], "%.2f" % l["solde_n"],
                         "%.2f" % l["solde_n1"], "%.2f" % l["variation"],
                         l["statut"], l["commentaire"], l["par"], l["le"],
                         l["anomalie"] or ""])
@@ -4798,6 +4840,8 @@ def view_pointage(req, conn, user, exercice_id):
         "pointage.html", user=user, client=client, exo=exo, lignes=visibles,
         total=total, revus=revus, reserves=reserves, avancement=avancement,
         message=message, f_statut=f_statut, f_anomalie=f_anomalie,
+        f_codif=f_codif, codif=codif, a_codifier=a_codifier,
+        plan_comptable=plan_comptable_options(),
         nb_anomalies=sum(1 for l in lignes if l["anomalie"]),
     ))
 

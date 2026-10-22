@@ -190,19 +190,35 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
 
     # 1. Chargement des données ──────────────────────────────────────────────
 
+    # Codification du client : le fichier XML doit porter les memes montants
+    # que les etats affiches a l'ecran, donc appliquer le meme rattachement.
+    def _mappings():
+        try:
+            r = conn.execute("SELECT client_id FROM exercices WHERE id=?",
+                             (exercice_id,)).fetchone()
+            if not r:
+                return {}
+            return {int(x["cle_source"]): int(x["cle_cible"]) for x in conn.execute(
+                "SELECT cle_source, cle_cible FROM client_compte_mapping WHERE client_id=?",
+                (r["client_id"],)).fetchall()}
+        except Exception:
+            return {}
+
+    _map = _mappings()
+
     def _bal(per):
         rows = conn.execute(
             "SELECT * FROM balance_lignes WHERE exercice_id=? AND periode=? ORDER BY compte",
             (exercice_id, per),
         ).fetchall()
-        return ce.build_balance_rows([dict(r) for r in rows])
+        return ce.build_balance_rows([dict(r) for r in rows], _map)
 
     def _tft(per):
         rows = conn.execute(
             "SELECT * FROM tft_detail_lignes WHERE exercice_id=? AND periode=? ORDER BY compte",
             (exercice_id, per),
         ).fetchall()
-        return ce.build_balance_rows([dict(r) for r in rows])
+        return ce.build_balance_rows([dict(r) for r in rows], _map)
 
     def _has_per(per):
         return bool(conn.execute(

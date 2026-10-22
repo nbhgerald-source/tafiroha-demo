@@ -267,7 +267,27 @@ def tft_named_split(tftn, tftn1):
     }
 
 
-def build_balance_rows(entries):
+def _table_codifiee(compte, mappings=None):
+    """Clef d'agregation, apres application de la codification utilisateur."""
+    table = account_table_code(compte)
+    if not mappings:
+        return table
+    cible = mappings.get(int(str(table)[:4]))
+    if not cible:
+        return table
+    return int(cible) * 10
+
+
+
+def build_balance_rows(entries, mappings=None):
+    """Transforme les lignes de balance en lignes exploitables par le moteur.
+
+    mappings : {cle_source_4_chiffres: cle_cible_4_chiffres}. Codification
+    saisie par l'utilisateur pour les comptes qui ne figurent pas au plan
+    SYSCOHADA. La clef "table" est alors recalculee sur le compte de
+    rattachement, ce qui fait alimenter les etats au bon poste. La clef
+    d'origine reste disponible dans "table_origine" pour l'affichage et le
+    diagnostic."""
     rows = []
     for e in entries:
         be_debit = _num(e.get("be_debit"))
@@ -284,7 +304,8 @@ def build_balance_rows(entries):
             "mvt_credit": mvt_credit,
             "bs_debit": bs_debit,
             "bs_credit": bs_credit,
-            "table": account_table_code(e.get("compte")),
+            "table": _table_codifiee(e.get("compte"), mappings),
+            "table_origine": account_table_code(e.get("compte")),
             "BE_Debit": be_debit,
             "BE_Credit": be_credit,
             "Mvt_Debit": mvt_debit,

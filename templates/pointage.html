@@ -9,42 +9,61 @@
   .bar span { display:block; height:100%; background:#1e8449; }
   .num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .mono { font-family:Menlo,Consolas,monospace; font-size:12px; }
-  tr.revu    { background:#f2f9f4; }
-  tr.reserve { background:#fef9ee; }
+  tr.c-inconnu { background:#fdecea; }
+  tr.c-racine  { background:#fef9ee; }
+  tr.c-manuel  { background:#eaf2f8; }
   .pastille { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
   .a-bloquant{background:#e74c3c} .a-majeur{background:#e67e22}
   .a-justifier{background:#3498db} .a-informatif{background:#aeb6bf}
-  .tag { font-size:11px; padding:1px 7px; border-radius:10px; white-space:nowrap; }
+  .tag { font-size:11px; padding:1px 7px; border-radius:10px; white-space:nowrap; display:inline-block; }
+  .k-exact  { background:#e8f8f5; color:#0e6655; border:1px solid #7dcea0; }
+  .k-racine { background:#fef5e7; color:#9c640c; border:1px solid #f0b27a; }
+  .k-manuel { background:#eaf2f8; color:#1a5276; border:1px solid #85c1e9; }
+  .k-inconnu{ background:#fdecea; color:#922b21; border:1px solid #e6b0aa; }
   .t-revu    { background:#e8f8f5; color:#0e6655; border:1px solid #7dcea0; }
   .t-reserve { background:#fef5e7; color:#9c640c; border:1px solid #f0b27a; }
   .t-a_revoir{ background:#f4f6f6; color:#566573; border:1px solid #ccd1d1; }
   td.cmt { font-size:11px; color:#566573; font-style:italic; }
+  .sub { font-size:11px; color:#566573; }
 </style>
 
 <div class="card">
-  <h2>Revue des comptes — {{ client['raison_sociale'] }} · exercice {{ exo['annee'] }}</h2>
+  <h2>Codification des comptes — {{ client['raison_sociale'] }} · exercice {{ exo['annee'] }}</h2>
   <p class="muted">
-    Pointez chaque compte après examen. Le pointage porte le nom du collaborateur
-    et la date : il constitue la trace de la revue au dossier.
+    Chaque compte de votre balance est rapproché du plan comptable SYSCOHADA.
+    Un compte mal codifié alimente les états annexés au mauvais endroit : les
+    comptes signalés en orange ou en rouge méritent d'être rattachés explicitement.
   </p>
 
   <div class="kpi">
     <div><span class="n">{{ total }}</span>Comptes</div>
-    <div style="background:#e8f8f5;border-color:#7dcea0"><span class="n">{{ revus }}</span>Revus</div>
-    <div style="background:#fef5e7;border-color:#f0b27a"><span class="n">{{ reserves }}</span>Sous réserve</div>
-    <div style="background:#fdecea;border-color:#e6b0aa"><span class="n">{{ total - revus - reserves }}</span>À revoir</div>
+    <div style="background:#e8f8f5;border-color:#7dcea0"><span class="n">{{ codif['exact'] }}</span>Reconnus</div>
+    <div style="background:#eaf2f8;border-color:#85c1e9"><span class="n">{{ codif['manuel'] }}</span>Rattachés</div>
+    <div style="background:#fef5e7;border-color:#f0b27a"><span class="n">{{ codif['racine'] }}</span>Par racine</div>
+    <div style="background:#fdecea;border-color:#e6b0aa"><span class="n">{{ codif['inconnu'] }}</span>Non codifiés</div>
     <div style="background:#fff;border-color:#d5d8dc">
-      <span class="n">{{ avancement }}%</span>Avancement
+      <span class="n">{{ avancement }}%</span>Comptes revus
       <div class="bar"><span style="width:{{ avancement }}%"></span></div>
     </div>
   </div>
 
+  {% if a_codifier %}
+  <div style="background:#fef5e7;border-left:4px solid #e67e22;padding:10px 14px;margin-top:12px;border-radius:4px;line-height:1.5">
+    <strong>{{ a_codifier }} compte{{ 's' if a_codifier > 1 }} à codifier.</strong>
+    Ces comptes n'existent pas tels quels au plan SYSCOHADA : ils sont rattachés
+    au compte voisin le plus proche, ce qui peut les faire apparaître au mauvais
+    poste des états annexés. Indiquez le compte OHADA correspondant.
+  </div>
+  {% endif %}
+
   <div style="margin-top:14px">
     <a class="btn" href="/exercice/{{ exo['id'] }}/revision" style="background:#1a5276">Anomalies détectées</a>
+    <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?codification=racine"
+       style="margin-left:8px;background:#e67e22">Comptes à codifier ({{ a_codifier }})</a>
     <form method="post" style="display:inline;margin-left:8px"
-          onsubmit="return confirm('Reprendre le pointage de l\'exercice précédent pour les comptes dont le solde n\'a pas varié ?');">
+          onsubmit="return confirm('Reprendre la revue de l\'exercice précédent pour les comptes dont le solde n\'a pas varié ?');">
       <input type="hidden" name="reprendre_n1" value="1">
-      <button class="btn" type="submit" style="background:#52606b">Reprendre le pointage N-1</button>
+      <button class="btn" type="submit" style="background:#52606b">Reprendre la revue N-1</button>
     </form>
     <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?format=csv"
        style="margin-left:8px;background:#52606b">Exporter en CSV</a>
@@ -57,9 +76,19 @@
 <div class="card no-print">
   <form method="get" style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
     <div>
-      <label>Statut</label>
+      <label>Codification</label>
+      <select name="codification">
+        <option value="">Toutes</option>
+        <option value="inconnu" {{ 'selected' if f_codif == 'inconnu' }}>Non codifiés</option>
+        <option value="racine"  {{ 'selected' if f_codif == 'racine' }}>Rattachés par racine</option>
+        <option value="manuel"  {{ 'selected' if f_codif == 'manuel' }}>Rattachés manuellement</option>
+        <option value="exact"   {{ 'selected' if f_codif == 'exact' }}>Reconnus</option>
+      </select>
+    </div>
+    <div>
+      <label>Revue</label>
       <select name="statut">
-        <option value="">Tous</option>
+        <option value="">Toutes</option>
         <option value="a_revoir" {{ 'selected' if f_statut == 'a_revoir' }}>À revoir</option>
         <option value="revu"     {{ 'selected' if f_statut == 'revu' }}>Revus</option>
         <option value="reserve"  {{ 'selected' if f_statut == 'reserve' }}>Sous réserve</option>
@@ -69,7 +98,7 @@
       <label style="font-weight:400;font-size:13px;cursor:pointer">
         <input type="checkbox" name="anomalie" value="1" style="width:auto;margin-right:6px"
                {{ 'checked' if f_anomalie }}>
-        Comptes porteurs d'une anomalie ({{ nb_anomalies }})
+        Porteurs d'une anomalie ({{ nb_anomalies }})
       </label>
     </div>
     <button class="btn" type="submit">Filtrer</button>
@@ -80,25 +109,46 @@
   <table>
     <tr>
       <th style="width:80px">Compte</th>
-      <th>Désignation</th>
-      <th class="num" style="width:120px">Solde N</th>
-      <th class="num" style="width:120px">Solde N-1</th>
-      <th class="num" style="width:120px">Variation</th>
-      <th style="width:100px">Statut</th>
-      <th style="width:250px">Revue</th>
+      <th>Désignation dans la balance</th>
+      <th style="width:230px">Compte OHADA de rattachement</th>
+      <th class="num" style="width:115px">Solde N</th>
+      <th class="num" style="width:115px">Variation</th>
+      <th style="width:230px">Revue</th>
     </tr>
     {% for l in lignes %}
-    <tr class="{{ l['statut'] }}">
+    <tr class="c-{{ l['codification'] }}">
       <td class="mono">
-        {% if l['anomalie'] %}<span class="pastille a-{{ l['anomalie'] }}" title="{{ l['anomalie'] }}"></span>{% endif %}
+        {% if l['anomalie'] %}<span class="pastille a-{{ l['anomalie'] }}" title="Anomalie {{ l['anomalie'] }}"></span>{% endif %}
         {{ l['compte'] }}
       </td>
       <td>
-        {{ l['designation'] }}
+        {{ l['designation'] or '—' }}
         {% if l['commentaire'] %}<br><span class="cmt">↳ {{ l['commentaire'] }}</span>{% endif %}
       </td>
+      <td>
+        <span class="tag k-{{ l['codification'] }}">
+          {% if l['codification'] == 'exact' %}Reconnu
+          {% elif l['codification'] == 'manuel' %}Rattaché
+          {% elif l['codification'] == 'racine' %}Par racine
+          {% else %}Non codifié{% endif %}
+        </span>
+        {% if l['ohada'] %}
+        <span class="mono">{{ l['ohada'] }}</span>
+        <br><span class="sub">{{ l['ohada_libelle'] }}</span>
+        {% endif %}
+        {% if l['codification'] != 'exact' %}
+        <form method="post" style="margin-top:5px;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+          <input type="hidden" name="codifier" value="{{ l['compte'] }}">
+          <input type="text" name="cible" list="plan-comptable" required
+                 placeholder="compte OHADA" autocomplete="off"
+                 style="font-size:12px;padding:2px 5px;width:140px">
+          <button class="btn" type="submit" style="font-size:11px;padding:3px 8px;background:#1a5276">
+            Rattacher
+          </button>
+        </form>
+        {% endif %}
+      </td>
       <td class="num">{{ '{:,.0f}'.format(l['solde_n']).replace(',', ' ') }}</td>
-      <td class="num">{{ '{:,.0f}'.format(l['solde_n1']).replace(',', ' ') }}</td>
       <td class="num">{{ '{:,.0f}'.format(l['variation']).replace(',', ' ') }}</td>
       <td>
         <span class="tag t-{{ l['statut'] }}">
@@ -106,10 +156,8 @@
           {% elif l['statut'] == 'reserve' %}Sous réserve
           {% else %}À revoir{% endif %}
         </span>
-        {% if l['par'] %}<br><span class="cmt">{{ l['par'].split('@')[0] }} · {{ l['le'] }}</span>{% endif %}
-      </td>
-      <td>
-        <form method="post" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+        {% if l['par'] %}<span class="sub"> · {{ l['par'].split('@')[0] }} {{ l['le'] }}</span>{% endif %}
+        <form method="post" style="margin-top:4px;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
           <input type="hidden" name="compte" value="{{ l['compte'] }}">
           <select name="statut" style="font-size:12px;padding:2px">
             <option value="revu"     {{ 'selected' if l['statut'] == 'revu' }}>Revu</option>
@@ -117,14 +165,20 @@
             <option value="a_revoir" {{ 'selected' if l['statut'] == 'a_revoir' }}>À revoir</option>
           </select>
           <input type="text" name="commentaire" placeholder="Observation"
-                 value="{{ l['commentaire'] }}" style="font-size:12px;padding:2px;width:110px">
+                 value="{{ l['commentaire'] }}" style="font-size:12px;padding:2px;width:95px">
           <button class="btn" type="submit" style="font-size:11px;padding:3px 8px">OK</button>
         </form>
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="muted">Aucun compte ne correspond aux filtres retenus.</td></tr>
+    <tr><td colspan="6" class="muted">Aucun compte ne correspond aux filtres retenus.</td></tr>
     {% endfor %}
   </table>
 </div>
+
+<datalist id="plan-comptable">
+  {% for c in plan_comptable %}
+  <option value="{{ c['code'] }}">{{ c['code'] }} — {{ c['libelle'] }}</option>
+  {% endfor %}
+</datalist>
 {% endblock %}

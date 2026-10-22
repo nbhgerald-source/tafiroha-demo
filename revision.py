@@ -161,6 +161,32 @@ def resolve_sens(table, overrides=None, mappings=None):
     return None, 0
 
 
+def resoudre_compte(table, mappings=None):
+    """Compte OHADA auquel se rattache un compte de la balance.
+
+    Reproduit la colonne Verif de la Table de conversion du classeur : un
+    compte est reconnu s'il figure au plan sur ses 4 premiers chiffres, sinon
+    on cherche sa racine a 3 chiffres, sinon il n'est pas codifie.
+
+    Retourne (cle_ohada, niveau, origine) ou origine vaut :
+      "manuel"  rattachement saisi par l'utilisateur
+      "exact"   le compte figure tel quel au plan
+      "racine"  rattache a un compte voisin partageant ses 3 premiers chiffres
+      "inconnu" aucune correspondance : codification a faire
+    """
+    key = _key4(table)
+    if mappings and key in mappings:
+        return mappings[key], 4, "manuel"
+    s = str(key)
+    if key in SENS_PLAN:
+        return key, 4, "exact"
+    for k in sorted(SENS_PLAN):
+        if str(k)[:3] == s[:3]:
+            return k, 3, "racine"
+    return None, 0, "inconnu"
+
+
+
 def compte_obsolete(table):
     """Retourne (remplacant, libelle, severite) si le compte est supprime."""
     s = str(_key4(table))
