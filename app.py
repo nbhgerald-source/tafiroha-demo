@@ -4313,8 +4313,13 @@ def _enregistrer_mapping(conn, client_id, compte_source, compte_cible, user_id):
         (client_id, cle_src, cle_cib, str(compte_source), user_id),
     )
     conn.commit()
-    return ("Compte %s rattaché à %s (sens %s). Le rattachement s'appliquera aussi "
-            "aux exercices suivants." % (compte_source, compte_cible, sens))
+    msg = ("Compte %s rattaché à %s (sens %s). Le rattachement s'appliquera aussi "
+           "aux exercices suivants." % (compte_source, compte_cible, sens))
+    if str(cle_src)[0] != str(cle_cib)[0]:
+        msg += (" ATTENTION : ce rattachement fait passer le compte de la classe %s "
+                "à la classe %s. Le montant bascule entre le bilan et le compte de "
+                "résultat." % (str(cle_src)[0], str(cle_cib)[0]))
+    return msg
 
 
 def lancer_revision(conn, exercice_id, exo, client):
@@ -4709,6 +4714,227 @@ def libelle_compte(compte):
     return ""
 
 
+def _codifier_en_lot(conn, client_id, form, user_id, exercice_id=None):
+    """Enregistre en une passe tous les rattachements saisis dans le tableau.
+
+    Un seul enregistrement pour toute la page : sans cela, codifier 80 comptes
+    demande 80 allers-retours."""
+    faits, ignores, refuses, classes, retires = 0, 0, [], [], 0
+    for k, v in form.items():
+        if not k.startswith("cible_"):
+            continue
+        source = k[len("cible_"):]
+        cible = (v or "").strip()
+        if not cible:
+            # champ vide : l'utilisateur retire le rattachement
+            s4 = _cle4(source)
+            if s4 is not None:
+                cur = conn.execute(
+                    "DELETE FROM client_compte_mapping WHERE client_id=? AND cle_source=?",
+                    (client_id, s4))
+                if cur.rowcount:
+                    retires += 1
+            continue
+        # on n'ecrit que si le rattachement change reellement
+        src_cle = _cle4(source)
+        cib_cle = _cle4(cible)
+        if src_cle is None or cib_cle is None:
+            refuses.append(source)
+            continue
+        if src_cle == cib_cle:
+            ignores += 1
+            continue
+        sens, niveau = revision.resolve_sens(int((("".join(
+            c for c in cible if c.isdigit()) + "00000000")[:5])))
+        if niveau == 0:
+            refuses.append("%s→%s" % (source, cible))
+            continue
+        conn.execute(
+            "INSERT INTO client_compte_mapping "
+            "(client_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(client_id, cle_source) DO UPDATE SET "
+            "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
+            (client_id, src_cle, cib_cle, source, user_id))
+        if str(src_cle)[0] != str(cib_cle)[0]:
+            classes.append("%s→%s" % (source, cible))
+        faits += 1
+    conn.commit()
+
+    # Revue : le meme enregistrement enregistre aussi les statuts de la page.
+    revus = 0
+    if exercice_id:
+        for k, v in form.items():
+            if not k.startswith("statut_"):
+                continue
+            compte = k[len("statut_"):]
+            obs = (form.get("obs_" + compte, "") or "").strip()
+            if v == "a_revoir":
+                conn.execute("DELETE FROM revision_pointage WHERE exercice_id=? AND compte=?",
+                             (exercice_id, compte))
+                continue
+            conn.execute(
+                "INSERT INTO revision_pointage "
+                "(exercice_id, compte, statut, commentaire, pointe_par, pointe_le) "
+                "VALUES (?,?,?,?,?,datetime('now')) "
+                "ON CONFLICT(exercice_id, compte) DO UPDATE SET "
+                "statut=excluded.statut, commentaire=excluded.commentaire, "
+                "pointe_par=excluded.pointe_par, pointe_le=excluded.pointe_le",
+                (exercice_id, compte, v, obs or None, user_id))
+            revus += 1
+        conn.commit()
+    msg = "%d rattachement%s enregistré%s." % (faits, "s" if faits > 1 else "",
+                                               "s" if faits > 1 else "")
+    if ignores:
+        msg += " %d compte%s déjà correctement codifié%s." % (
+            ignores, "s" if ignores > 1 else "", "s" if ignores > 1 else "")
+    if revus:
+        msg += " %d compte%s pointé%s." % (revus, "s" if revus > 1 else "",
+                                           "s" if revus > 1 else "")
+    if refuses:
+        msg += " Refusés (compte cible inconnu au plan) : %s." % ", ".join(refuses[:8])
+    if retires:
+        msg += " %d rattachement%s retiré%s." % (retires, "s" if retires > 1 else "",
+                                                 "s" if retires > 1 else "")
+    if classes:
+        msg += (" ATTENTION, changement de classe sur %s : le montant bascule entre "
+                "le bilan et le compte de résultat." % ", ".join(classes[:6]))
+    return msg
+
+
+def _reinitialiser_codification(conn, client_id):
+    """Supprime toute la codification du client : les etats reviennent au
+    calcul d'origine, sans redeploiement ni intervention en base."""
+    cur = conn.execute("DELETE FROM client_compte_mapping WHERE client_id=?", (client_id,))
+    conn.commit()
+    n = cur.rowcount or 0
+    if not n:
+        return "Aucun rattachement à supprimer."
+    return ("%d rattachement%s supprimé%s. Les états financiers reviennent au calcul "
+            "d'origine." % (n, "s" if n > 1 else "", "s" if n > 1 else ""))
+
+
+def _purger_lignes_sans_compte(conn, exercice_id):
+    """Retire les lignes de balance sans numero de compte exploitable :
+    en-tetes restees dans le fichier importe, sous-totaux, libelles de rupture."""
+    lignes = conn.execute(
+        "SELECT id, compte FROM balance_lignes WHERE exercice_id=?", (exercice_id,)
+    ).fetchall()
+    ids = [r["id"] for r in lignes
+           if not any(c.isdigit() for c in str(r["compte"] or ""))]
+    for i in ids:
+        conn.execute("DELETE FROM balance_lignes WHERE id=?", (i,))
+    conn.commit()
+    if not ids:
+        return "Aucune ligne sans numéro de compte dans cette balance."
+    return ("%d ligne%s sans numéro de compte supprimée%s de la balance."
+            % (len(ids), "s" if len(ids) > 1 else "", "s" if len(ids) > 1 else ""))
+
+
+def _valider_propositions(conn, exercice_id, client_id, user_id):
+    """Fige en rattachements explicites toutes les propositions par racine.
+
+    Les comptes rattachés par simple voisinage de racine restent des
+    approximations tant qu'elles ne sont pas validées : ce bouton les acte en
+    bloc pour le cas, frequent, ou elles sont toutes correctes."""
+    mappings = _revision_mappings(conn, client_id)
+    faits = 0
+    for r in load_balance(conn, exercice_id, "N"):
+        cle, niveau, origine = revision.resoudre_compte(r.get("table_origine", 0), mappings)
+        if origine != "racine" or not cle:
+            continue
+        src = revision._key4(r.get("table_origine", 0))
+        conn.execute(
+            "INSERT OR IGNORE INTO client_compte_mapping "
+            "(client_id, cle_source, cle_cible, compte_source, motif, cree_par) "
+            "VALUES (?,?,?,?,?,?)",
+            (client_id, src, int(cle), str(r.get("compte")),
+             "Proposition automatique validée en lot", user_id))
+        faits += 1
+    conn.commit()
+    if not faits:
+        return "Aucune proposition à valider : tous les comptes sont déjà codifiés."
+    return ("%d proposition%s validée%s. Vérifiez les comptes dont le rattachement "
+            "vous semble inexact." % (faits, "s" if faits > 1 else "",
+                                      "s" if faits > 1 else ""))
+
+
+def _cle4(compte):
+    """Clef a 4 chiffres d'un numero de compte, ou None s'il est illisible."""
+    s = "".join(c for c in str(compte or "") if c.isdigit())
+    if not s:
+        return None
+    return revision._key4(int((s + "00000000")[:5]))
+
+
+def _importer_codification(conn, client_id, contenu, user_id):
+    """Import d'un fichier de codification : compte source ; compte OHADA.
+
+    Accepte le CSV exporte depuis cette meme page, dont on ne lit que les
+    colonnes "Compte" et "Compte OHADA" : le cabinet peut donc exporter,
+    travailler sous Excel sur tout son portefeuille, et reimporter."""
+    try:
+        texte = contenu.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            texte = contenu.decode("latin-1")
+        except Exception:
+            return "Fichier illisible : encodage non reconnu."
+    lignes = [l for l in texte.splitlines() if l.strip()]
+    if not lignes:
+        return "Fichier vide."
+    delim = ";" if lignes[0].count(";") >= lignes[0].count(",") else ","
+    lecteur = csv.reader(io.StringIO(texte), delimiter=delim)
+    rows = list(lecteur)
+    entete = [c.strip().lower() for c in rows[0]]
+    i_src = i_cib = None
+    for i, c in enumerate(entete):
+        if i_src is None and c.startswith("compte") and "ohada" not in c:
+            i_src = i
+        if i_cib is None and "ohada" in c:
+            i_cib = i
+    if i_src is None or i_cib is None:
+        return ("Colonnes introuvables : le fichier doit comporter une colonne "
+                "\"Compte\" et une colonne \"Compte OHADA\".")
+    faits, ignores, refuses, classes = 0, 0, [], []
+    for r in rows[1:]:
+        if len(r) <= max(i_src, i_cib):
+            continue
+        src, cib = r[i_src].strip(), r[i_cib].strip()
+        if not src or not cib:
+            continue
+        s4, c4 = _cle4(src), _cle4(cib)
+        if s4 is None or c4 is None:
+            continue
+        if s4 == c4:
+            ignores += 1
+            continue
+        sens, niveau = revision.resolve_sens(c4 * 10)
+        if niveau == 0:
+            refuses.append("%s→%s" % (src, cib))
+            continue
+        conn.execute(
+            "INSERT INTO client_compte_mapping "
+            "(client_id, cle_source, cle_cible, compte_source, motif, cree_par) "
+            "VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(client_id, cle_source) DO UPDATE SET "
+            "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
+            (client_id, s4, c4, src, "Import de codification", user_id))
+        if str(s4)[0] != str(c4)[0]:
+            classes.append("%s→%s" % (src, cib))
+        faits += 1
+    conn.commit()
+    msg = "%d rattachement%s importé%s." % (faits, "s" if faits > 1 else "",
+                                            "s" if faits > 1 else "")
+    if ignores:
+        msg += " %d ligne%s sans changement." % (ignores, "s" if ignores > 1 else "")
+    if refuses:
+        msg += " Refusés (compte cible inconnu) : %s." % ", ".join(refuses[:8])
+    if classes:
+        msg += (" ATTENTION, changement de classe sur %s : le montant bascule entre "
+                "le bilan et le compte de résultat." % ", ".join(classes[:6]))
+    return msg
+
+
 def view_pointage(req, conn, user, exercice_id):
     """Revue des comptes : pointage compte par compte de la balance."""
     exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
@@ -4719,9 +4945,21 @@ def view_pointage(req, conn, user, exercice_id):
         return Response("Accès refusé", status="403 Forbidden")
 
     message = None
-    if req.method == "POST":
+    if req.method == "POST" and req.environ.get("CONTENT_TYPE", "").startswith("multipart/form-data"):
+        contenu = _extract_multipart_file(req, "fichier_codif")
+        message = (_importer_codification(conn, client["id"], contenu, user["id"])
+                   if contenu else "Aucun fichier reçu.")
+    elif req.method == "POST":
         if req.form.get("reprendre_n1"):
             message = _reprendre_pointage_n1(conn, exercice_id, exo, user)
+        elif req.form.get("reinitialiser_codif"):
+            message = _reinitialiser_codification(conn, client["id"])
+        elif req.form.get("purger_lignes"):
+            message = _purger_lignes_sans_compte(conn, exercice_id)
+        elif req.form.get("codif_lot"):
+            message = _codifier_en_lot(conn, client["id"], req.form, user["id"], exercice_id)
+        elif req.form.get("valider_propositions"):
+            message = _valider_propositions(conn, exercice_id, client["id"], user["id"])
         elif req.form.get("codifier"):
             message = _enregistrer_mapping(
                 conn, client["id"], req.form.get("codifier"),
@@ -4788,7 +5026,10 @@ def view_pointage(req, conn, user, exercice_id):
         sn = r["bs_debit"] - r["bs_credit"]
         s1 = soldes_n1.get(cpt, 0.0)
         p = pointages.get(cpt)
-        cle, niveau, origine = revision.resoudre_compte(r.get("table", 0), mappings)
+        # resolution depuis la clef D'ORIGINE : "table" porte deja le
+        # rattachement applique, s'en servir afficherait tout comme reconnu
+        cle, niveau, origine = revision.resoudre_compte(
+            r.get("table_origine", r.get("table", 0)), mappings)
         lignes.append({
             "compte": cpt,
             "designation": designations.get(cpt) or "",
@@ -4803,6 +5044,8 @@ def view_pointage(req, conn, user, exercice_id):
             "ohada": str(cle) if cle else "",
             "ohada_libelle": plan.get(str(cle), "") if cle else "",
             "codification": origine,
+            "change_classe": bool(
+                cle and str(revision._key4(r.get("table_origine", 0)))[0] != str(cle)[0]),
         })
 
     f_statut = req.query.get("statut", [""])[0]

@@ -60,6 +60,13 @@
     <a class="btn" href="/exercice/{{ exo['id'] }}/revision" style="background:#1a5276">Anomalies détectées</a>
     <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?codification=racine"
        style="margin-left:8px;background:#e67e22">Comptes à codifier ({{ a_codifier }})</a>
+    {% if codif['racine'] %}
+    <form method="post" style="display:inline;margin-left:8px"
+          onsubmit="return confirm('Valider les propositions automatiques ? Vous pourrez les corriger ensuite.');">
+      <input type="hidden" name="valider_propositions" value="1">
+      <button class="btn" type="submit" style="background:#0e6655">Valider les {{ codif['racine'] }} propositions</button>
+    </form>
+    {% endif %}
     <form method="post" style="display:inline;margin-left:8px"
           onsubmit="return confirm('Reprendre la revue de l\'exercice précédent pour les comptes dont le solde n\'a pas varié ?');">
       <input type="hidden" name="reprendre_n1" value="1">
@@ -68,6 +75,24 @@
     <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?format=csv"
        style="margin-left:8px;background:#52606b">Exporter en CSV</a>
     <a href="/exercice/{{ exo['id'] }}" style="margin-left:12px">← Retour à l'exercice</a>
+  </div>
+
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e8e8;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="muted" style="font-size:12px">Nettoyage :</span>
+    <form method="post" style="display:inline"
+          onsubmit="return confirm('Retirer de la balance les lignes sans numéro de compte (en-têtes, sous-totaux) ?');">
+      <input type="hidden" name="purger_lignes" value="1">
+      <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:#52606b">
+        Supprimer les lignes sans numéro de compte
+      </button>
+    </form>
+    <form method="post" style="display:inline"
+          onsubmit="return confirm('Supprimer TOUTE la codification de ce client ? Les états financiers reviendront à leur calcul d\'origine.');">
+      <input type="hidden" name="reinitialiser_codif" value="1">
+      <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:#b00020">
+        Réinitialiser toute la codification
+      </button>
+    </form>
   </div>
 </div>
 
@@ -103,9 +128,32 @@
     </div>
     <button class="btn" type="submit">Filtrer</button>
   </form>
+  <hr style="margin:1rem 0;border:none;border-top:1px solid #e5e8e8">
+  <form method="post" enctype="multipart/form-data"
+        style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:13px;color:#566573">
+      Travailler sous Excel : exportez le CSV, remplissez la colonne
+      <strong>Compte OHADA</strong>, puis réimportez le fichier.
+    </span>
+    <input type="file" name="fichier_codif" accept=".csv,.txt" required
+           style="font-size:12px;width:auto">
+    <button class="btn" type="submit" style="font-size:12px;padding:4px 10px">Importer la codification</button>
+  </form>
 </div>
 
+<form method="post">
+<input type="hidden" name="codif_lot" value="1">
 <div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+    <span class="muted" style="font-size:13px">
+      Le compte de rattachement proposé est pré-rempli. Corrigez uniquement les
+      lignes qui vous semblent inexactes, puis enregistrez une seule fois.
+      <strong>Vider un champ supprime le rattachement</strong> de ce compte.
+    </span>
+    <button class="btn" type="submit" style="background:#1a5276;white-space:nowrap">
+      Enregistrer la page
+    </button>
+  </div>
   <table>
     <tr>
       <th style="width:80px">Compte</th>
@@ -126,6 +174,12 @@
         {% if l['commentaire'] %}<br><span class="cmt">↳ {{ l['commentaire'] }}</span>{% endif %}
       </td>
       <td>
+        {% if l['change_classe'] %}
+        <span class="tag" style="background:#fdecea;color:#922b21;border:1px solid #e6b0aa"
+              title="Ce rattachement change la classe du compte : le montant bascule entre le bilan et le compte de résultat">
+          Change de classe
+        </span><br>
+        {% endif %}
         <span class="tag k-{{ l['codification'] }}">
           {% if l['codification'] == 'exact' %}Reconnu
           {% elif l['codification'] == 'manuel' %}Rattaché
@@ -137,15 +191,9 @@
         <br><span class="sub">{{ l['ohada_libelle'] }}</span>
         {% endif %}
         {% if l['codification'] != 'exact' %}
-        <form method="post" style="margin-top:5px;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
-          <input type="hidden" name="codifier" value="{{ l['compte'] }}">
-          <input type="text" name="cible" list="plan-comptable" required
-                 placeholder="compte OHADA" autocomplete="off"
-                 style="font-size:12px;padding:2px 5px;width:140px">
-          <button class="btn" type="submit" style="font-size:11px;padding:3px 8px;background:#1a5276">
-            Rattacher
-          </button>
-        </form>
+        <input type="text" name="cible_{{ l['compte'] }}" list="plan-comptable"
+               value="{{ l['ohada'] }}" placeholder="compte OHADA" autocomplete="off"
+               style="font-size:12px;padding:2px 5px;width:150px;margin-top:4px">
         {% endif %}
       </td>
       <td class="num">{{ '{:,.0f}'.format(l['solde_n']).replace(',', ' ') }}</td>
@@ -157,24 +205,30 @@
           {% else %}À revoir{% endif %}
         </span>
         {% if l['par'] %}<span class="sub"> · {{ l['par'].split('@')[0] }} {{ l['le'] }}</span>{% endif %}
-        <form method="post" style="margin-top:4px;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
-          <input type="hidden" name="compte" value="{{ l['compte'] }}">
-          <select name="statut" style="font-size:12px;padding:2px">
+        <div style="margin-top:4px;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+          <select name="statut_{{ l['compte'] }}" style="font-size:12px;padding:2px">
+            <option value="a_revoir" {{ 'selected' if l['statut'] == 'a_revoir' }}>À revoir</option>
             <option value="revu"     {{ 'selected' if l['statut'] == 'revu' }}>Revu</option>
             <option value="reserve"  {{ 'selected' if l['statut'] == 'reserve' }}>Sous réserve</option>
-            <option value="a_revoir" {{ 'selected' if l['statut'] == 'a_revoir' }}>À revoir</option>
           </select>
-          <input type="text" name="commentaire" placeholder="Observation"
+          <input type="text" name="obs_{{ l['compte'] }}" placeholder="Observation"
                  value="{{ l['commentaire'] }}" style="font-size:12px;padding:2px;width:95px">
-          <button class="btn" type="submit" style="font-size:11px;padding:3px 8px">OK</button>
-        </form>
+        </div>
       </td>
     </tr>
     {% else %}
     <tr><td colspan="6" class="muted">Aucun compte ne correspond aux filtres retenus.</td></tr>
     {% endfor %}
   </table>
+  {% if lignes %}
+  <div style="margin-top:12px">
+    <button class="btn" type="submit" style="background:#1a5276">
+      Enregistrer la page
+    </button>
+  </div>
+  {% endif %}
 </div>
+</form>
 
 <datalist id="plan-comptable">
   {% for c in plan_comptable %}

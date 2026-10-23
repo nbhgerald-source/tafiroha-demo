@@ -949,6 +949,22 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
     # A la cloture de N le resultat n'est pas encore vire en 13xx : il vit dans
     # les classes 6 a 8. La reference est donc le solde de ces classes, pas le
     # compte 13. Ce controle valide le mapping de la feuille RESULTAT.
+    # ETA-15 : le resultat doit egaler le solde des comptes de bilan de la
+    # BALANCE BRUTE, avant toute codification. Un rattachement qui fait changer
+    # un compte de classe deplace son montant entre bilan et resultat sans
+    # desequilibrer le bilan : aucun autre controle ne le verrait.
+    res_cr_ = v(resultat, "I52")
+    brut_15 = sum(_solde(r) for r in (balN or [])
+                  if 10000 <= r.get("table_origine", r.get("table", 0)) < 60000)
+    if res_cr_ and abs(res_cr_ - brut_15) > tol:
+        c.add("ETA-15", "ETA",
+              "Le resultat de l'exercice (%s) ne correspond pas au solde des comptes "
+              "de bilan de la balance (%s), ecart de %s. Verifiez la codification : "
+              "un compte rattache a une autre classe deplace son montant entre le "
+              "bilan et le compte de resultat."
+              % (_fmt(res_cr_), _fmt(brut_15), _fmt(res_cr_ - brut_15)),
+              BLOQUANT, None, res_cr_ - brut_15)
+
     res_cr = v(resultat, "I52")
     res_bal = -_somme(balN, 60000, 90000)
     if res_cr and abs(res_cr - res_bal) > tol:
