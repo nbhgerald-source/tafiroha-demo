@@ -311,6 +311,10 @@ def parse_csv_balance(file_bytes):
     for r in data_rows:
         if not r or not r[0].strip():
             continue
+        # une ligne dont le premier champ ne contient aucun chiffre n'est pas
+        # un compte : en-tete, sous-total ou libelle de rupture
+        if not any(ch.isdigit() for ch in r[0]):
+            continue
         r = r + [""] * (8 - len(r))
         out.append({
             "compte": r[0].strip(),

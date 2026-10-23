@@ -409,6 +409,13 @@ def controles_int(c, balN, balN1, overrides=None, mappings=None):
             if r.get("table", 0) >= 90000:
                 c.add("INT-10", "INT",
                       "Compte de classe 9 present dans la balance generale", INFO, cpt)
+            if not r.get("table", 0):
+                # ligne d'en-tete restee dans le fichier importe, ou numero de
+                # compte illisible : elle n'alimente aucun etat financier
+                c.add("INT-14", "INT",
+                      "Balance %s : ligne sans numero de compte exploitable. Elle "
+                      "n'alimente aucun etat financier et devrait etre retiree de "
+                      "la balance." % label, MAJEUR, cpt, _solde(r))
 
     # INT-12 : report du resultat N-1 en balance d'entree N.
     #

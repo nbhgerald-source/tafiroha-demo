@@ -36,9 +36,18 @@ IFERROR_RE = re.compile(r'^IFERROR\((.*),""\)$')
 
 
 def account_table_code(compte):
-    s = str(compte).strip().replace(" ", "").replace("\xa0", "")
-    s = (s + "00000000")[:5]
-    return int(s)
+    """Clef d'agregation a 5 chiffres derivee du numero de compte.
+
+    Tolerante par construction : une ligne d'en-tete restee dans le fichier
+    importe, un numero contenant un separateur ou un suffixe alphabetique ne
+    doivent PAS interrompre le calcul de tous les etats. Les caracteres non
+    numeriques sont ignores ; une ligne sans aucun chiffre renvoie 0, valeur
+    qu'aucune plage des etats ne capte (elles commencent a 10000) et que le
+    controle INT-14 signale au reviseur."""
+    s = "".join(ch for ch in str(compte or "") if ch.isdigit())
+    if not s:
+        return 0
+    return int((s + "00000000")[:5])
 
 
 def _ops(lo_op, lo, hi_op, hi):
