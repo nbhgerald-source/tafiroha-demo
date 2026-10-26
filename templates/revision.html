@@ -130,6 +130,11 @@
         <td>
           {{ a['libelle'] }}
           {% if a['commentaire'] %}<br><span class="cmt">↳ {{ a['commentaire'] }}</span>{% endif %}
+          {% if a['compte'] %}
+          <br><a class="no-print" style="font-size:11px"
+                 href="/exercice/{{ exo['id'] }}/pointage?anomalie=1#c{{ a['compte'] }}">
+            Voir le compte {{ a['compte'] }} dans la revue →</a>
+          {% endif %}
           {% if a['compte'] and a['code'] in ('INT-06', 'INT-13', 'MAP-09') %}
           <form method="post" style="margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap">
             <input type="hidden" name="mapping_source" value="{{ a['compte'] }}">

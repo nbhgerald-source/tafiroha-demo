@@ -1039,19 +1039,39 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
                 if abs(d) > tol:
                     ecarts.append((cpt, ouverture.get(cpt, 0.0), cloture.get(cpt, 0.0), d))
             ecarts.sort(key=lambda x: -abs(x[3]))
-            detail = ""
-            if ecarts:
-                detail = (" Comptes en cause (ouverture N / cloture N-1) : %s%s."
-                          % (", ".join("%s : %s contre %s" % (cpt, _fmt(o), _fmt(f))
-                                       for cpt, o, f, _ in ecarts[:6]),
-                             " ..." if len(ecarts) > 6 else ""))
-            detail += (" La balance d'entree de N doit reprendre a l'identique la balance "
-                       "de sortie de N-1 : corrigez le report dans votre logiciel de "
-                       "comptabilite avant de reimporter.")
-            c.add("ETA-13", "ETA",
-                  "TFT : tresorerie d'ouverture (%s) differente de la cloture des comptes "
-                  "de tresorerie en N-1 (%s).%s" % (_fmt(A), _fmt(tres_n1), detail),
-                  BLOQUANT, None, A - tres_n1)
+            CONSEIL = ("La balance d'entree de N doit reprendre a l'identique la balance "
+                       "de sortie de N-1 : corrigez le report des a-nouveaux dans votre "
+                       "logiciel de comptabilite, puis reimportez la balance.")
+            # Une anomalie par compte : elle porte alors un numero, remonte dans
+            # la page de revue en face du compte concerne, et se justifie ou se
+            # solde compte par compte. Une ligne globale sans numero n'est
+            # actionnable par personne.
+            for cpt, ouv, clo, d in ecarts:
+                if not clo:
+                    motif = ("le compte n'existe pas dans la balance N-1 alors qu'il "
+                             "s'ouvre a %s en N" % _fmt(ouv))
+                elif not ouv:
+                    motif = ("le compte clot a %s en N-1 mais ne s'ouvre pas en N"
+                             % _fmt(clo))
+                else:
+                    motif = ("ouverture N %s contre cloture N-1 %s" % (_fmt(ouv), _fmt(clo)))
+                c.add("ETA-13", "ETA",
+                      "Report des a-nouveaux : %s, soit un ecart de %s. %s"
+                      % (motif, _fmt(d), CONSEIL),
+                      BLOQUANT, cpt, d)
+            # Le TFT peut porter une tresorerie d'ouverture saisie a la main :
+            # elle ne se deduit alors d'aucun compte et le detail ci-dessus ne
+            # la couvre pas. On ne signale ce residu que s'il existe vraiment.
+            residu = (A - tres_n1) - sum(x[3] for x in ecarts)
+            if abs(residu) > tol or not ecarts:
+                c.add("ETA-13", "ETA",
+                      "TFT : tresorerie d'ouverture (%s) differente de la cloture des "
+                      "comptes de tresorerie en N-1 (%s)%s. La tresorerie d'ouverture du "
+                      "TFT ne se deduit pas des comptes 5x de la balance : verifiez la "
+                      "saisie de la feuille TFT."
+                      % (_fmt(A), _fmt(tres_n1),
+                         ", dont %s sans compte identifiable" % _fmt(residu) if ecarts else ""),
+                      BLOQUANT, None, residu if ecarts else A - tres_n1)
         tres_bilan = v(bilan, "H37") - v(bilan, "M37")
         if tres_bilan and abs(FIN - tres_bilan) > tol:
             c.add("ETA-14", "ETA",

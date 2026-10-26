@@ -250,7 +250,7 @@
       <th style="width:230px">Revue</th>
     </tr>
     {% for l in lignes %}
-    <tr class="c-{{ l['codification'] }}">
+    <tr class="c-{{ l['codification'] }}" id="c{{ l['compte'] }}">
       <td class="mono">
         {% if l['anomalie'] %}<span class="pastille a-{{ l['anomalie'] }}" title="Anomalie {{ l['anomalie'] }}"></span>{% endif %}
         {{ l['compte'] }}
