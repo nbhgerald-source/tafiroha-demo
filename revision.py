@@ -944,9 +944,27 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
     actif = v(bilan, "H39")
     passif = v(bilan, "M39")
     if actif and passif and abs(actif - passif) > tol:
+        # Le constat seul ("le bilan ne tombe pas juste") n'oriente vers rien.
+        # On donne la decomposition de l'actif (brut moins amortissements) et
+        # le montant des comptes de bilan que la codification laisse de cote :
+        # dans la quasi-totalite des cas l'ecart vient de la.
+        brut = v(bilan, "F39")
+        amort = v(bilan, "G39")
+        ecart = actif - passif
+        detail = ("Actif brut %s moins amortissements et depreciations %s = actif net %s."
+                  % (_fmt(brut), _fmt(amort), _fmt(actif)))
+        # L'ecart se lit presque toujours dans l'une de ces trois directions.
+        if amort and abs(abs(ecart) - abs(amort)) <= tol:
+            detail += (" L'ecart est exactement egal aux amortissements : verifiez que "
+                       "les comptes 28xx / 29xx sont bien crediteurs en balance.")
+        detail += (" Un ecart de ce type vient d'un compte de bilan qu'aucune ligne des "
+                   "etats ne capte : ouvrez la page Codification des comptes et traitez "
+                   "les comptes marques NON CODIFIE ou Par racine, en commencant par ceux "
+                   "dont le solde approche %s." % _fmt(abs(ecart)))
         c.add("ETA-01", "ETA",
-              "Bilan desequilibre : total actif %s, total passif %s" % (_fmt(actif), _fmt(passif)),
-              BLOQUANT, None, actif - passif)
+              "Bilan desequilibre : total actif %s, total passif %s. %s"
+              % (_fmt(actif), _fmt(passif), detail),
+              BLOQUANT, None, ecart)
 
     # A la cloture de N le resultat n'est pas encore vire en 13xx : il vit dans
     # les classes 6 a 8. La reference est donc le solde de ces classes, pas le
@@ -1002,9 +1020,37 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
                   "de la balance N (%s)" % (_fmt(FIN), _fmt(tres_n)),
                   BLOQUANT, None, FIN - tres_n)
         if balN1 and abs(A - tres_n1) > tol:
+            # Sans le detail par compte, ce constat n'indique pas ou chercher.
+            # La cause est toujours la meme : pour au moins un compte 5x, la
+            # balance d'entree de N ne reprend pas la balance de sortie de N-1.
+            ouverture = {}
+            for r in (balN or []):
+                if 50000 <= r.get("table", 0) < 60000:
+                    cpt = str(r.get("compte"))
+                    ouverture[cpt] = ouverture.get(cpt, 0.0) + _solde(r, "be")
+            cloture = {}
+            for r in (balN1 or []):
+                if 50000 <= r.get("table", 0) < 60000:
+                    cpt = str(r.get("compte"))
+                    cloture[cpt] = cloture.get(cpt, 0.0) + _solde(r)
+            ecarts = []
+            for cpt in sorted(set(ouverture) | set(cloture)):
+                d = ouverture.get(cpt, 0.0) - cloture.get(cpt, 0.0)
+                if abs(d) > tol:
+                    ecarts.append((cpt, ouverture.get(cpt, 0.0), cloture.get(cpt, 0.0), d))
+            ecarts.sort(key=lambda x: -abs(x[3]))
+            detail = ""
+            if ecarts:
+                detail = (" Comptes en cause (ouverture N / cloture N-1) : %s%s."
+                          % (", ".join("%s : %s contre %s" % (cpt, _fmt(o), _fmt(f))
+                                       for cpt, o, f, _ in ecarts[:6]),
+                             " ..." if len(ecarts) > 6 else ""))
+            detail += (" La balance d'entree de N doit reprendre a l'identique la balance "
+                       "de sortie de N-1 : corrigez le report dans votre logiciel de "
+                       "comptabilite avant de reimporter.")
             c.add("ETA-13", "ETA",
                   "TFT : tresorerie d'ouverture (%s) differente de la cloture des comptes "
-                  "de tresorerie en N-1 (%s)" % (_fmt(A), _fmt(tres_n1)),
+                  "de tresorerie en N-1 (%s).%s" % (_fmt(A), _fmt(tres_n1), detail),
                   BLOQUANT, None, A - tres_n1)
         tres_bilan = v(bilan, "H37") - v(bilan, "M37")
         if tres_bilan and abs(FIN - tres_bilan) > tol:
