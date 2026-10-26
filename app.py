@@ -4962,10 +4962,22 @@ def _importer_codification(conn, client_id, contenu, user_id):
 def _export_balance_codifiee(conn, exercice_id, exo, client):
     """Balance d'origine augmentee de sa codification, au format Excel.
 
-    Chaque ligne porte le compte tel que saisi, les six colonnes de la balance,
-    et le compte OHADA auquel il est effectivement rattache. C'est la piece
-    justificative du traitement : elle permet de rejouer le raisonnement sans
-    ouvrir l'application."""
+    Quatre niveaux de lecture, du plus synthetique au plus detaille :
+
+      - "Tous les comptes" : l'integralite des numeros rencontres, N et N-1
+        confondus, y compris ceux qui n'existent que dans l'un des deux
+        exercices et ceux du detail TFT. C'est la feuille de comprehension :
+        aucun compte du dossier n'en est absent.
+      - "Balance N" / "Balance N-1" : les lignes telles qu'importees, sans
+        regroupement, de sorte qu'un numero porte par plusieurs comptes
+        auxiliaires apparaisse autant de fois qu'en balance.
+      - "Detail TFT N" / "Detail TFT N-1" : l'eclatement des comptes 106, 154,
+        1984, 478x, 481x quand il a ete importe.
+      - "Controle" : le decompte des lignes, a rapprocher du fichier source.
+
+    Chaque ligne porte le compte tel que saisi et le compte OHADA auquel il est
+    effectivement rattache : la piece justificative permet de rejouer le
+    raisonnement sans ouvrir l'application."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
@@ -4979,38 +4991,119 @@ def _export_balance_codifiee(conn, exercice_id, exo, client):
     # plutot que de retomber sur le plan, dont le libelle ne correspondrait pas
     # au compte reellement utilise par le client.
     libelles = {}
-    for r in conn.execute(
-            "SELECT compte, designation, periode FROM balance_lignes WHERE exercice_id=?",
-            (exercice_id,)).fetchall():
-        if r["designation"]:
-            libelles.setdefault((r["periode"], str(r["compte"])), r["designation"])
+    libelle_tout = {}
+    for table in ("balance_lignes", "tft_detail_lignes"):
+        for r in conn.execute(
+                "SELECT compte, designation, periode FROM %s WHERE exercice_id=?" % table,
+                (exercice_id,)).fetchall():
+            if r["designation"]:
+                libelles.setdefault((r["periode"], str(r["compte"])), r["designation"])
+                libelle_tout.setdefault(str(r["compte"]), r["designation"])
 
     ETATS = {"exact": "Reconnu", "manuel": "Rattache", "racine": "Par racine",
              "inconnu": "NON CODIFIE"}
     TEINTES = {"manuel": "EAF2F8", "racine": "FEF5E7", "inconnu": "FDECEA"}
 
-    wb = Workbook()
-    for i, periode in enumerate(("N", "N1")):
-        ws = wb.active if i == 0 else wb.create_sheet()
-        ws.title = "Balance %s" % ("N" if periode == "N" else "N-1")
-        entetes = ["Compte", "Designation", "BE Debit", "BE Credit",
-                   "Mvt Debit", "Mvt Credit", "BS Debit", "BS Credit", "Solde",
-                   "Compte OHADA", "Libelle OHADA", "Codification",
-                   "Cle d'agregation", "Revue", "Observation"]
+    def _entete(ws, entetes, largeurs):
         ws.append(entetes)
         for c in range(1, len(entetes) + 1):
             cel = ws.cell(1, c)
             cel.font = Font(bold=True, color="FFFFFF", size=9)
             cel.fill = PatternFill("solid", fgColor="1A5276")
             cel.alignment = Alignment(wrap_text=True, vertical="center")
+        for c, larg in enumerate(largeurs, 1):
+            ws.column_dimensions[get_column_letter(c)].width = larg
 
-        for r in load_balance(conn, exercice_id, periode):
+    def _finir(ws, col_min, col_max):
+        for row in ws.iter_rows(min_row=2, min_col=col_min, max_col=col_max):
+            for cel in row:
+                cel.number_format = "# ##0"
+        ws.freeze_panes = "A2"
+        if ws.max_row > 1:
+            ws.auto_filter.ref = ws.dimensions
+
+    def _codif(r):
+        return revision.resoudre_compte(
+            r.get("table_origine", r.get("table", 0)), mappings)
+
+    # Les six jeux de lignes du dossier, charges une seule fois.
+    jeux = {
+        ("balance", "N"): load_balance(conn, exercice_id, "N"),
+        ("balance", "N1"): load_balance(conn, exercice_id, "N1"),
+        ("tft", "N"): load_tft_detail(conn, exercice_id, "N"),
+        ("tft", "N1"): load_tft_detail(conn, exercice_id, "N1"),
+    }
+
+    wb = Workbook()
+
+    # ----------------------------------------------------- tous les comptes
+    # Un compte n'apparait qu'une fois, avec ses soldes des deux exercices et
+    # l'origine ou il a ete rencontre. C'est la feuille a lire pour verifier
+    # qu'aucun compte du fichier source n'a ete perdu en route.
+    agrege = {}
+    for (source, periode), rows in jeux.items():
+        for r in rows:
             cpt = str(r["compte"])
-            cle, niveau, origine = revision.resoudre_compte(
-                r.get("table_origine", r.get("table", 0)), mappings)
+            a = agrege.setdefault(cpt, {
+                "compte": cpt, "table_origine": r.get("table_origine", r.get("table", 0)),
+                "table": r.get("table", 0),
+                "solde_n": 0.0, "solde_n1": 0.0, "lignes": 0, "origines": set(),
+            })
+            solde = r["bs_debit"] - r["bs_credit"]
+            if source == "balance":
+                a["solde_n" if periode == "N" else "solde_n1"] += solde
+                a["lignes"] += 1
+                a["origines"].add("Balance N" if periode == "N" else "Balance N-1")
+            else:
+                a["origines"].add("Detail TFT N" if periode == "N" else "Detail TFT N-1")
+
+    ws = wb.active
+    ws.title = "Tous les comptes"
+    _entete(ws, ["Compte", "Designation", "Present dans", "Nb lignes",
+                 "Solde N", "Solde N-1", "Variation", "Compte OHADA",
+                 "Libelle OHADA", "Codification", "Cle d'agregation",
+                 "Change de classe", "Revue", "Observation"],
+            (14, 42, 30, 10, 16, 16, 16, 13, 38, 14, 14, 15, 11, 30))
+    for cpt in sorted(agrege):
+        a = agrege[cpt]
+        cle, niveau, origine = revision.resoudre_compte(a["table_origine"], mappings)
+        p = pointages.get(cpt)
+        change = bool(cle and str(revision._key4(a["table_origine"]))[0] != str(cle)[0])
+        ws.append([
+            cpt, libelle_tout.get(cpt) or libelle_compte(cpt),
+            " + ".join(sorted(a["origines"])), a["lignes"],
+            a["solde_n"], a["solde_n1"], a["solde_n"] - a["solde_n1"],
+            str(cle) if cle else "", plan.get(str(cle), "") if cle else "",
+            ETATS.get(origine, origine), a["table"],
+            "OUI" if change else "",
+            (p["statut"] if p else "a_revoir"),
+            (p["commentaire"] if p else "") or "",
+        ])
+        teinte = TEINTES.get(origine)
+        if teinte:
+            for c in range(1, 15):
+                ws.cell(ws.max_row, c).fill = PatternFill("solid", fgColor=teinte)
+    _finir(ws, 4, 7)
+
+    # ------------------------------------------- balances et details, bruts
+    FEUILLES = [("balance", "N", "Balance N"), ("balance", "N1", "Balance N-1"),
+                ("tft", "N", "Detail TFT N"), ("tft", "N1", "Detail TFT N-1")]
+    for source, periode, titre in FEUILLES:
+        rows = jeux[(source, periode)]
+        if source == "tft" and not rows:
+            continue
+        ws = wb.create_sheet(titre)
+        _entete(ws, ["Compte", "Designation", "BE Debit", "BE Credit",
+                     "Mvt Debit", "Mvt Credit", "BS Debit", "BS Credit", "Solde",
+                     "Compte OHADA", "Libelle OHADA", "Codification",
+                     "Cle d'agregation", "Revue", "Observation"],
+                (14, 42, 14, 14, 14, 14, 14, 14, 16, 13, 38, 14, 14, 11, 30))
+        for r in rows:
+            cpt = str(r["compte"])
+            cle, niveau, origine = _codif(r)
             p = pointages.get(cpt)
             ws.append([
-                cpt, libelles.get((periode, cpt)) or libelle_compte(cpt),
+                cpt, libelles.get((periode, cpt)) or libelle_tout.get(cpt) or libelle_compte(cpt),
                 r["be_debit"], r["be_credit"], r["mvt_debit"], r["mvt_credit"],
                 r["bs_debit"], r["bs_credit"], r["bs_debit"] - r["bs_credit"],
                 str(cle) if cle else "", plan.get(str(cle), "") if cle else "",
@@ -5020,17 +5113,30 @@ def _export_balance_codifiee(conn, exercice_id, exo, client):
             ])
             teinte = TEINTES.get(origine)
             if teinte:
-                for c in range(1, len(entetes) + 1):
+                for c in range(1, 16):
                     ws.cell(ws.max_row, c).fill = PatternFill("solid", fgColor=teinte)
+        _finir(ws, 3, 9)
 
-        for c, larg in enumerate((14, 42, 14, 14, 14, 14, 14, 14, 16, 13, 38, 14, 14, 11, 30), 1):
-            ws.column_dimensions[get_column_letter(c)].width = larg
-        for row in ws.iter_rows(min_row=2, min_col=3, max_col=9):
-            for cel in row:
-                cel.number_format = "# ##0"
-        ws.freeze_panes = "A2"
-        if ws.max_row > 1:
-            ws.auto_filter.ref = ws.dimensions
+    # ------------------------------------------------------------ controle
+    # Decompte a rapprocher du fichier d'import : si un total differe, la
+    # perte s'est produite avant l'application (ligne hors du tableau Excel
+    # BalanceN/BalanceN1, ou numero de compte vide).
+    ws = wb.create_sheet("Controle")
+    _entete(ws, ["Jeu de donnees", "Lignes importees", "Numeros distincts"],
+            (26, 18, 20))
+    for source, periode, titre in FEUILLES:
+        rows = jeux[(source, periode)]
+        ws.append([titre, len(rows), len({str(r["compte"]) for r in rows})])
+    ws.append(["Total comptes distincts", "", len(agrege)])
+    ws.cell(ws.max_row, 1).font = Font(bold=True)
+    ws.cell(ws.max_row, 3).font = Font(bold=True)
+    ws.append([])
+    ws.append(["Rapprochez ces totaux du fichier d'import : un ecart signifie "
+               "que des lignes sont hors du tableau Excel BalanceN / BalanceN1, "
+               "ou que leur numero de compte est vide."])
+    ws.cell(ws.max_row, 1).alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(start_row=ws.max_row, start_column=1, end_row=ws.max_row, end_column=3)
+    ws.freeze_panes = "A2"
 
     buf = io.BytesIO()
     wb.save(buf)
