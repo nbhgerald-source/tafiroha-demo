@@ -4801,6 +4801,30 @@ def _codifier_en_lot(conn, client_id, form, user_id, exercice_id=None):
     return msg
 
 
+def _purger_rattachements_inutilises(conn, exercice_id, client_id):
+    """Supprime les rattachements portant sur des comptes absents de la balance.
+
+    Ces rattachements proviennent d'un autre exercice ou d'un essai : ils ne
+    servent plus, mais reapparaitront des qu'un compte de meme racine sera
+    importe. Les retirer evite une codification fantome."""
+    presents = {revision._key4(r.get("table_origine", r.get("table", 0)))
+                for r in load_balance(conn, exercice_id, "N")}
+    presents |= {revision._key4(r.get("table_origine", r.get("table", 0)))
+                 for r in load_balance(conn, exercice_id, "N1")}
+    cles = [int(r["cle_source"]) for r in conn.execute(
+        "SELECT cle_source FROM client_compte_mapping WHERE client_id=?",
+        (client_id,)).fetchall()]
+    morts = [c for c in cles if c not in presents]
+    for c in morts:
+        conn.execute("DELETE FROM client_compte_mapping WHERE client_id=? AND cle_source=?",
+                     (client_id, c))
+    conn.commit()
+    if not morts:
+        return "Tous les rattachements portent sur des comptes présents dans la balance."
+    return ("%d rattachement%s inutilisé%s supprimé%s." % (
+        len(morts), *(("s",) * 3 if len(morts) > 1 else ("",) * 3)))
+
+
 def _reinitialiser_codification(conn, client_id):
     """Supprime toute la codification du client : les etats reviennent au
     calcul d'origine, sans redeploiement ni intervention en base."""
@@ -4952,6 +4976,18 @@ def view_pointage(req, conn, user, exercice_id):
     elif req.method == "POST":
         if req.form.get("reprendre_n1"):
             message = _reprendre_pointage_n1(conn, exercice_id, exo, user)
+        elif req.form.get("retirer_rattachement"):
+            try:
+                cle = int(req.form.get("retirer_rattachement"))
+                conn.execute(
+                    "DELETE FROM client_compte_mapping WHERE client_id=? AND cle_source=?",
+                    (client["id"], cle))
+                conn.commit()
+                message = "Rattachement du compte %d supprimé." % cle
+            except (TypeError, ValueError):
+                message = "Rattachement introuvable."
+        elif req.form.get("purger_inutilises"):
+            message = _purger_rattachements_inutilises(conn, exercice_id, client["id"])
         elif req.form.get("reinitialiser_codif"):
             message = _reinitialiser_codification(conn, client["id"])
         elif req.form.get("purger_lignes"):
@@ -5051,10 +5087,46 @@ def view_pointage(req, conn, user, exercice_id):
     f_statut = req.query.get("statut", [""])[0]
     f_anomalie = req.query.get("anomalie", [""])[0] == "1"
     f_codif = req.query.get("codification", [""])[0]
+    def _match_codif(l):
+        if not f_codif:
+            return True
+        # "a_codifier" regroupe les deux etats qui demandent une action :
+        # rattachement approximatif par racine, et absence de correspondance
+        if f_codif == "a_codifier":
+            return l["codification"] in ("racine", "inconnu")
+        return l["codification"] == f_codif
     visibles = [l for l in lignes
                 if (not f_statut or l["statut"] == f_statut)
                 and (not f_anomalie or l["anomalie"])
-                and (not f_codif or l["codification"] == f_codif)]
+                and _match_codif(l)]
+    # Rattachements enregistres pour ce client : ils valent pour TOUS ses
+    # exercices. Un rattachement cree sur une autre balance s'applique donc
+    # ici, parfois a tort — on les affiche pour qu'ils soient verifiables.
+    comptes_balance = {revision._key4(r.get("table_origine", r.get("table", 0)))
+                       for r in balN}
+    rattachements = []
+    for r in conn.execute(
+        "SELECT cle_source, cle_cible, compte_source, motif, cree_le "
+        "FROM client_compte_mapping WHERE client_id=? ORDER BY cle_source",
+        (client["id"],) if client else (0,),
+    ).fetchall():
+        src = int(r["cle_source"])
+        rattachements.append({
+            "source": src,
+            "cible": int(r["cle_cible"]),
+            "compte_source": r["compte_source"] or "",
+            "libelle": plan.get(str(int(r["cle_cible"])), ""),
+            "motif": r["motif"] or "",
+            "le": str(r["cree_le"] or "")[:10],
+            "utilise": src in comptes_balance,
+            "change_classe": str(src)[0] != str(int(r["cle_cible"]))[0],
+        })
+    inutilises = sum(1 for x in rattachements if not x["utilise"])
+    # Une balance peut porter plusieurs lignes sous le meme numero de compte
+    # (comptes auxiliaires). Un rattachement vise un NUMERO : il s'applique
+    # donc a toutes ses lignes. Les deux compteurs different legitimement.
+    comptes_uniques = len({str(r.get("compte")) for r in balN})
+
     codif = {"exact": 0, "racine": 0, "manuel": 0, "inconnu": 0}
     for l in lignes:
         codif[l["codification"]] = codif.get(l["codification"], 0) + 1
@@ -5088,6 +5160,8 @@ def view_pointage(req, conn, user, exercice_id):
         total=total, revus=revus, reserves=reserves, avancement=avancement,
         message=message, f_statut=f_statut, f_anomalie=f_anomalie,
         f_codif=f_codif, codif=codif, a_codifier=a_codifier,
+        rattachements=rattachements, inutilises=inutilises,
+        comptes_uniques=comptes_uniques,
         plan_comptable=plan_comptable_options(),
         nb_anomalies=sum(1 for l in lignes if l["anomalie"]),
     ))

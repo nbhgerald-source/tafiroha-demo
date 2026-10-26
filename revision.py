@@ -402,9 +402,11 @@ def controles_int(c, balN, balN1, overrides=None, mappings=None):
                 # crediteurs). Seul l'echec complet merite un signalement.
                 if niveau == 0:
                     c.add("INT-06", "INT",
-                          "Balance %s : compte non rattachable au plan SYSCOHADA. "
-                          "Indiquez un compte de regularisation : le rattachement sera "
-                          "conserve pour cet exercice et les suivants." % label,
+                          "Balance %s : le compte %s n'existe pas au plan SYSCOHADA. "
+                          "Son montant n'alimente aucune ligne des etats financiers. "
+                          "Indiquez un compte de regularisation depuis la page de "
+                          "codification : le rattachement sera conserve pour cet "
+                          "exercice et les suivants." % (label, cpt),
                           MAJEUR, cpt, _solde(r))
             if r.get("table", 0) >= 90000:
                 c.add("INT-10", "INT",

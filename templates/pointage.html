@@ -36,11 +36,13 @@
   </p>
 
   <div class="kpi">
-    <div><span class="n">{{ total }}</span>Comptes</div>
-    <div style="background:#e8f8f5;border-color:#7dcea0"><span class="n">{{ codif['exact'] }}</span>Reconnus</div>
-    <div style="background:#eaf2f8;border-color:#85c1e9"><span class="n">{{ codif['manuel'] }}</span>Rattachés</div>
+    <div><span class="n">{{ total }}</span>Lignes de balance
+      {% if comptes_uniques != total %}<br><span class="sub">{{ comptes_uniques }} numéros distincts</span>{% endif %}
+    </div>
+    <div style="background:#e8f8f5;border-color:#7dcea0"><span class="n">{{ codif['exact'] }}</span>Reconnues</div>
+    <div style="background:#eaf2f8;border-color:#85c1e9"><span class="n">{{ codif['manuel'] }}</span>Rattachées</div>
     <div style="background:#fef5e7;border-color:#f0b27a"><span class="n">{{ codif['racine'] }}</span>Par racine</div>
-    <div style="background:#fdecea;border-color:#e6b0aa"><span class="n">{{ codif['inconnu'] }}</span>Non codifiés</div>
+    <div style="background:#fdecea;border-color:#e6b0aa"><span class="n">{{ codif['inconnu'] }}</span>Non codifiées</div>
     <div style="background:#fff;border-color:#d5d8dc">
       <span class="n">{{ avancement }}%</span>Comptes revus
       <div class="bar"><span style="width:{{ avancement }}%"></span></div>
@@ -58,8 +60,10 @@
 
   <div style="margin-top:14px">
     <a class="btn" href="/exercice/{{ exo['id'] }}/revision" style="background:#1a5276">Anomalies détectées</a>
-    <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?codification=racine"
+    {% if a_codifier %}
+    <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?codification=a_codifier"
        style="margin-left:8px;background:#e67e22">Comptes à codifier ({{ a_codifier }})</a>
+    {% endif %}
     {% if codif['racine'] %}
     <form method="post" style="display:inline;margin-left:8px"
           onsubmit="return confirm('Valider les propositions automatiques ? Vous pourrez les corriger ensuite.');">
@@ -98,12 +102,80 @@
 
 {% if message %}<div class="card"><div class="msg">{{ message }}</div></div>{% endif %}
 
+{% if rattachements %}
+<div class="card">
+  <h3 style="margin-top:0">Rattachements enregistrés — {{ rattachements|length }}</h3>
+  {% if codif['manuel'] != rattachements|length %}
+  <p style="font-size:13px;background:#eaf2f8;border-left:3px solid #85c1e9;padding:8px 12px;border-radius:4px;line-height:1.5;margin:0 0 10px">
+    {% if rattachements|length == 1 %}Ce rattachement s'applique{% else %}Ces {{ rattachements|length }} rattachements s'appliquent{% endif %}
+    à <strong>{{ codif['manuel'] }} ligne{{ 's' if codif['manuel'] > 1 }}</strong> de la balance :
+    celle-ci comporte plusieurs lignes sous un même numéro de compte (comptes
+    auxiliaires), et un rattachement vise le numéro, donc toutes ses lignes.
+  </p>
+  {% endif %}
+  <p class="muted" style="font-size:13px;line-height:1.5">
+    Ces rattachements valent pour <strong>tous les exercices de ce client</strong>.
+    Ils modifient les montants du bilan, du compte de résultat et du TFT. Un
+    rattachement hérité d'une autre balance peut s'appliquer ici à tort.
+    {% if inutilises %}
+    <br><strong style="color:#922b21">{{ inutilises }} d'entre eux portent sur des
+    comptes absents de cette balance.</strong>
+    {% endif %}
+  </p>
+  {% if inutilises %}
+  <form method="post" style="display:inline"
+        onsubmit="return confirm('Supprimer les rattachements portant sur des comptes absents de cette balance ?');">
+    <input type="hidden" name="purger_inutilises" value="1">
+    <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:#e67e22">
+      Supprimer les {{ inutilises }} rattachements inutilisés
+    </button>
+  </form>
+  {% endif %}
+  <table style="margin-top:10px">
+    <tr>
+      <th style="width:90px">Compte</th>
+      <th style="width:90px">Rattaché à</th>
+      <th>Libellé OHADA</th>
+      <th style="width:110px">Origine</th>
+      <th style="width:100px">État</th>
+      <th style="width:90px"></th>
+    </tr>
+    {% for r in rattachements %}
+    <tr {% if r['change_classe'] %}style="background:#fdecea"{% elif not r['utilise'] %}style="background:#f4f6f6"{% endif %}>
+      <td class="mono">{{ r['compte_source'] or r['source'] }}</td>
+      <td class="mono">{{ r['cible'] }}</td>
+      <td>{{ r['libelle'] }}</td>
+      <td class="sub">{{ r['motif'] or 'Saisie manuelle' }}<br>{{ r['le'] }}</td>
+      <td>
+        {% if r['change_classe'] %}
+        <span class="tag" style="background:#fdecea;color:#922b21;border:1px solid #e6b0aa">Change de classe</span>
+        {% elif not r['utilise'] %}
+        <span class="tag" style="background:#f4f6f6;color:#566573;border:1px solid #ccd1d1">Inutilisé</span>
+        {% else %}
+        <span class="tag k-manuel">Actif</span>
+        {% endif %}
+      </td>
+      <td>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="retirer_rattachement" value="{{ r['source'] }}">
+          <button class="btn" type="submit" style="font-size:11px;padding:3px 8px;background:#b00020">
+            Retirer
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
 <div class="card no-print">
   <form method="get" style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
     <div>
       <label>Codification</label>
       <select name="codification">
         <option value="">Toutes</option>
+        <option value="a_codifier" {{ 'selected' if f_codif == 'a_codifier' }}>À codifier (racine ou inconnu)</option>
         <option value="inconnu" {{ 'selected' if f_codif == 'inconnu' }}>Non codifiés</option>
         <option value="racine"  {{ 'selected' if f_codif == 'racine' }}>Rattachés par racine</option>
         <option value="manuel"  {{ 'selected' if f_codif == 'manuel' }}>Rattachés manuellement</option>
