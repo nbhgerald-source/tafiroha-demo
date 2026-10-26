@@ -43,6 +43,9 @@
     <div style="background:#eaf2f8;border-color:#85c1e9"><span class="n">{{ codif['manuel'] }}</span>Rattachées</div>
     <div style="background:#fef5e7;border-color:#f0b27a"><span class="n">{{ codif['racine'] }}</span>Par racine</div>
     <div style="background:#fdecea;border-color:#e6b0aa"><span class="n">{{ codif['inconnu'] }}</span>Non codifiées</div>
+    {% if nb_n1_seules %}
+    <div style="background:#f4f6f6"><span class="n">{{ nb_n1_seules }}</span>N-1 seulement</div>
+    {% endif %}
     <div style="background:#fff;border-color:#d5d8dc">
       <span class="n">{{ avancement }}%</span>Comptes revus
       <div class="bar"><span style="width:{{ avancement }}%"></span></div>
@@ -76,6 +79,8 @@
       <input type="hidden" name="reprendre_n1" value="1">
       <button class="btn" type="submit" style="background:#52606b">Reprendre la revue N-1</button>
     </form>
+    <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?format=xlsx"
+       style="margin-left:8px;background:#0e6655">Balance codifiée (Excel)</a>
     <a class="btn" href="/exercice/{{ exo['id'] }}/pointage?format=csv"
        style="margin-left:8px;background:#52606b">Exporter en CSV</a>
     <a href="/exercice/{{ exo['id'] }}" style="margin-left:12px">← Retour à l'exercice</a>
@@ -183,6 +188,14 @@
       </select>
     </div>
     <div>
+      <label>Exercice</label>
+      <select name="periode">
+        <option value="">N et N-1</option>
+        <option value="n"  {{ 'selected' if f_periode == 'n' }}>Présents en N</option>
+        <option value="n1" {{ 'selected' if f_periode == 'n1' }}>N-1 seulement ({{ nb_n1_seules }})</option>
+      </select>
+    </div>
+    <div>
       <label>Revue</label>
       <select name="statut">
         <option value="">Toutes</option>
@@ -240,6 +253,7 @@
       <td class="mono">
         {% if l['anomalie'] %}<span class="pastille a-{{ l['anomalie'] }}" title="Anomalie {{ l['anomalie'] }}"></span>{% endif %}
         {{ l['compte'] }}
+        {% if l['periode'] %}<br><span class="sub" title="Ce compte n'existe que dans la balance N-1">N-1 seul</span>{% endif %}
       </td>
       <td>
         {{ l['designation'] or '—' }}

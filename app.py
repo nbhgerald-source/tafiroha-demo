@@ -4959,6 +4959,84 @@ def _importer_codification(conn, client_id, contenu, user_id):
     return msg
 
 
+def _export_balance_codifiee(conn, exercice_id, exo, client):
+    """Balance d'origine augmentee de sa codification, au format Excel.
+
+    Chaque ligne porte le compte tel que saisi, les six colonnes de la balance,
+    et le compte OHADA auquel il est effectivement rattache. C'est la piece
+    justificative du traitement : elle permet de rejouer le raisonnement sans
+    ouvrir l'application."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    plan = _plan_libelles()
+    mappings = _revision_mappings(conn, client["id"]) if client else {}
+    pointages = {str(r["compte"]): r for r in conn.execute(
+        "SELECT compte, statut, commentaire FROM revision_pointage WHERE exercice_id=?",
+        (exercice_id,)).fetchall()}
+    # build_balance_rows ne conserve pas le libelle saisi : on le relit en base
+    # plutot que de retomber sur le plan, dont le libelle ne correspondrait pas
+    # au compte reellement utilise par le client.
+    libelles = {}
+    for r in conn.execute(
+            "SELECT compte, designation, periode FROM balance_lignes WHERE exercice_id=?",
+            (exercice_id,)).fetchall():
+        if r["designation"]:
+            libelles.setdefault((r["periode"], str(r["compte"])), r["designation"])
+
+    ETATS = {"exact": "Reconnu", "manuel": "Rattache", "racine": "Par racine",
+             "inconnu": "NON CODIFIE"}
+    TEINTES = {"manuel": "EAF2F8", "racine": "FEF5E7", "inconnu": "FDECEA"}
+
+    wb = Workbook()
+    for i, periode in enumerate(("N", "N1")):
+        ws = wb.active if i == 0 else wb.create_sheet()
+        ws.title = "Balance %s" % ("N" if periode == "N" else "N-1")
+        entetes = ["Compte", "Designation", "BE Debit", "BE Credit",
+                   "Mvt Debit", "Mvt Credit", "BS Debit", "BS Credit", "Solde",
+                   "Compte OHADA", "Libelle OHADA", "Codification",
+                   "Cle d'agregation", "Revue", "Observation"]
+        ws.append(entetes)
+        for c in range(1, len(entetes) + 1):
+            cel = ws.cell(1, c)
+            cel.font = Font(bold=True, color="FFFFFF", size=9)
+            cel.fill = PatternFill("solid", fgColor="1A5276")
+            cel.alignment = Alignment(wrap_text=True, vertical="center")
+
+        for r in load_balance(conn, exercice_id, periode):
+            cpt = str(r["compte"])
+            cle, niveau, origine = revision.resoudre_compte(
+                r.get("table_origine", r.get("table", 0)), mappings)
+            p = pointages.get(cpt)
+            ws.append([
+                cpt, libelles.get((periode, cpt)) or libelle_compte(cpt),
+                r["be_debit"], r["be_credit"], r["mvt_debit"], r["mvt_credit"],
+                r["bs_debit"], r["bs_credit"], r["bs_debit"] - r["bs_credit"],
+                str(cle) if cle else "", plan.get(str(cle), "") if cle else "",
+                ETATS.get(origine, origine), r.get("table", 0),
+                (p["statut"] if p else "a_revoir"),
+                (p["commentaire"] if p else "") or "",
+            ])
+            teinte = TEINTES.get(origine)
+            if teinte:
+                for c in range(1, len(entetes) + 1):
+                    ws.cell(ws.max_row, c).fill = PatternFill("solid", fgColor=teinte)
+
+        for c, larg in enumerate((14, 42, 14, 14, 14, 14, 14, 14, 16, 13, 38, 14, 14, 11, 30), 1):
+            ws.column_dimensions[get_column_letter(c)].width = larg
+        for row in ws.iter_rows(min_row=2, min_col=3, max_col=9):
+            for cel in row:
+                cel.number_format = "# ##0"
+        ws.freeze_panes = "A2"
+        if ws.max_row > 1:
+            ws.auto_filter.ref = ws.dimensions
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def view_pointage(req, conn, user, exercice_id):
     """Revue des comptes : pointage compte par compte de la balance."""
     exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
@@ -5022,15 +5100,19 @@ def view_pointage(req, conn, user, exercice_id):
 
     balN = load_balance(conn, exercice_id, "N")
     balN1 = load_balance(conn, exercice_id, "N1")
-    soldes_n1 = {str(r["compte"]): (r["bs_debit"] - r["bs_credit"]) for r in balN1}
+    soldes_n1 = {}
+    for r in balN1:
+        cpt = str(r["compte"])
+        soldes_n1[cpt] = soldes_n1.get(cpt, 0.0) + (r["bs_debit"] - r["bs_credit"])
     # build_balance_rows ne conserve pas le libelle saisi dans la balance :
     # on le relit en base, et on retombe sur le plan comptable s'il est vide.
-    designations = {
-        str(r["compte"]): (r["designation"] or "")
-        for r in conn.execute(
-            "SELECT compte, designation FROM balance_lignes "
-            "WHERE exercice_id=? AND periode='N'", (exercice_id,)).fetchall()
-    }
+    designations = {}
+    for r in conn.execute(
+            "SELECT compte, designation, periode FROM balance_lignes "
+            "WHERE exercice_id=? ORDER BY periode DESC", (exercice_id,)).fetchall():
+        cpt = str(r["compte"])
+        if r["designation"] and not designations.get(cpt):
+            designations[cpt] = r["designation"]
 
     pointages = {}
     for r in conn.execute(
@@ -5056,10 +5138,24 @@ def view_pointage(req, conn, user, exercice_id):
     plan = _plan_libelles()
     mappings = _revision_mappings(conn, client["id"]) if client else {}
 
-    lignes = []
-    for r in balN:
+    # Les comptes presents uniquement en N-1 doivent aussi pouvoir etre
+    # codifies : ils alimentent la colonne comparative des etats, et un compte
+    # hors plan y perd son montant exactement comme en N.
+    comptes_n = {str(r["compte"]) for r in balN}
+    lignes_n1_seules = []
+    deja = set()
+    for r in balN1:
         cpt = str(r["compte"])
-        sn = r["bs_debit"] - r["bs_credit"]
+        if cpt in comptes_n or cpt in deja:
+            continue
+        deja.add(cpt)
+        lignes_n1_seules.append(r)
+
+    lignes = []
+    for r in list(balN) + lignes_n1_seules:
+        cpt = str(r["compte"])
+        seulement_n1 = cpt not in comptes_n
+        sn = 0.0 if seulement_n1 else (r["bs_debit"] - r["bs_credit"])
         s1 = soldes_n1.get(cpt, 0.0)
         p = pointages.get(cpt)
         # resolution depuis la clef D'ORIGINE : "table" porte deja le
@@ -5082,11 +5178,13 @@ def view_pointage(req, conn, user, exercice_id):
             "codification": origine,
             "change_classe": bool(
                 cle and str(revision._key4(r.get("table_origine", 0)))[0] != str(cle)[0]),
+            "periode": "N-1 seulement" if seulement_n1 else "",
         })
 
     f_statut = req.query.get("statut", [""])[0]
     f_anomalie = req.query.get("anomalie", [""])[0] == "1"
     f_codif = req.query.get("codification", [""])[0]
+    f_periode = req.query.get("periode", [""])[0]
     def _match_codif(l):
         if not f_codif:
             return True
@@ -5098,6 +5196,9 @@ def view_pointage(req, conn, user, exercice_id):
     visibles = [l for l in lignes
                 if (not f_statut or l["statut"] == f_statut)
                 and (not f_anomalie or l["anomalie"])
+                and (not f_periode
+                     or (f_periode == "n1" and l["periode"])
+                     or (f_periode == "n" and not l["periode"]))
                 and _match_codif(l)]
     # Rattachements enregistres pour ce client : ils valent pour TOUS ses
     # exercices. Un rattachement cree sur une autre balance s'applique donc
@@ -5125,7 +5226,10 @@ def view_pointage(req, conn, user, exercice_id):
     # Une balance peut porter plusieurs lignes sous le meme numero de compte
     # (comptes auxiliaires). Un rattachement vise un NUMERO : il s'applique
     # donc a toutes ses lignes. Les deux compteurs different legitimement.
-    comptes_uniques = len({str(r.get("compte")) for r in balN})
+    # Les lignes affichees couvrent N et les comptes propres a N-1 : le
+    # decompte des numeros distincts doit porter sur le meme perimetre.
+    comptes_uniques = len({l["compte"] for l in lignes})
+    nb_n1_seules = sum(1 for l in lignes if l["periode"])
 
     codif = {"exact": 0, "racine": 0, "manuel": 0, "inconnu": 0}
     for l in lignes:
@@ -5136,6 +5240,16 @@ def view_pointage(req, conn, user, exercice_id):
     reserves = sum(1 for l in lignes if l["statut"] == "reserve")
     total = len(lignes)
     avancement = int(100.0 * (revus + reserves) / total) if total else 0
+
+    if req.query.get("format", [""])[0] == "xlsx":
+        nom = "Balance_codifiee_%s_%s.xlsx" % (
+            "".join(ch if ch.isalnum() else "_"
+                    for ch in ((client["raison_sociale"] if client else "") or "client")
+                    )[:28].strip("_"), exo["annee"])
+        return Response(
+            _export_balance_codifiee(conn, exercice_id, exo, client),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=[("Content-Disposition", 'attachment; filename="%s"' % nom)])
 
     if req.query.get("format", [""])[0] == "csv":
         buf = io.StringIO()
@@ -5159,9 +5273,9 @@ def view_pointage(req, conn, user, exercice_id):
         "pointage.html", user=user, client=client, exo=exo, lignes=visibles,
         total=total, revus=revus, reserves=reserves, avancement=avancement,
         message=message, f_statut=f_statut, f_anomalie=f_anomalie,
-        f_codif=f_codif, codif=codif, a_codifier=a_codifier,
+        f_codif=f_codif, f_periode=f_periode, codif=codif, a_codifier=a_codifier,
         rattachements=rattachements, inutilises=inutilises,
-        comptes_uniques=comptes_uniques,
+        comptes_uniques=comptes_uniques, nb_n1_seules=nb_n1_seules,
         plan_comptable=plan_comptable_options(),
         nb_anomalies=sum(1 for l in lignes if l["anomalie"]),
     ))
