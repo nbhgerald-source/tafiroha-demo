@@ -108,6 +108,33 @@
 
 {% if message %}<div class="card"><div class="msg">{{ message }}</div></div>{% endif %}
 
+{% if lignes_sans_compte %}
+{% set n = lignes_sans_compte|length %}
+<div class="card" style="border-left:4px solid #e67e22;background:#fef5e7">
+  <h3 style="margin-top:0">{{ n }} ligne{{ 's' if n > 1 }} dont le libellé n'est pas un numéro de compte</h3>
+  <p style="font-size:13px;line-height:1.5;margin:0 0 10px">
+    <span class="mono">{{ lignes_sans_compte[:8]|join(', ') }}{{ ' ...' if n > 8 }}</span>
+    — un numéro de compte commence par un chiffre. Il s'agit d'en-têtes restées dans le
+    fichier importé, de sous-totaux ou de libellés de rupture.
+    {{ 'Elles ne sont' if n > 1 else "Elle n'est" }} donc pas
+    proposée{{ 's' if n > 1 }} à la codification.
+  </p>
+  <p style="font-size:13px;line-height:1.5;margin:0 0 10px">
+    <strong>Supprimez-{{ 'les' if n > 1 else 'la' }} sans attendre.</strong> Un libellé du
+    type « TOTAL CLASSE 1 » contient un chiffre : le moteur en retire les lettres et
+    rattache le montant au compte 1000. Le total parasite entre alors dans les états sans
+    qu'aucun autre contrôle ne le signale.
+  </p>
+  <form method="post" style="display:inline"
+        onsubmit="return confirm('Retirer ces lignes de la balance ?');">
+    <input type="hidden" name="purger_lignes" value="1">
+    <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:#e67e22">
+      Supprimer {{ 'ces ' ~ n ~ ' lignes' if n > 1 else 'cette ligne' }}
+    </button>
+  </form>
+</div>
+{% endif %}
+
 {% if rattachements %}
 <div class="card">
   <h3 style="margin-top:0">Rattachements enregistrés — {{ rattachements|length }}</h3>

@@ -411,13 +411,22 @@ def controles_int(c, balN, balN1, overrides=None, mappings=None):
             if r.get("table", 0) >= 90000:
                 c.add("INT-10", "INT",
                       "Compte de classe 9 present dans la balance generale", INFO, cpt)
-            if not r.get("table", 0):
-                # ligne d'en-tete restee dans le fichier importe, ou numero de
-                # compte illisible : elle n'alimente aucun etat financier
+            # Un numero de compte commence par un chiffre. Tester seulement
+            # table == 0 laissait passer les sous-totaux du type "TOTAL CLASSE 1"
+            # : account_table_code en retire les lettres, le rattache au compte
+            # 1000 et son montant entre dans le bilan sans aucune alerte.
+            if not r.get("table", 0) or not cpt[:1].isdigit():
                 c.add("INT-14", "INT",
-                      "Balance %s : ligne sans numero de compte exploitable. Elle "
-                      "n'alimente aucun etat financier et devrait etre retiree de "
-                      "la balance." % label, MAJEUR, cpt, _solde(r))
+                      "Balance %s : \"%s\" n'est pas un numero de compte (en-tete, "
+                      "sous-total ou libelle de rupture reste dans le fichier). "
+                      "%s Retirez la ligne depuis la page de codification, bouton "
+                      "\"Supprimer les lignes sans numero de compte\"."
+                      % (label, cpt,
+                         ("Son montant de %s est pourtant agrege au compte %d."
+                          % (_fmt(_solde(r)), r.get("table", 0) // 10)
+                          if r.get("table", 0) and _solde(r) else
+                          "Elle n'alimente aucun etat financier.")),
+                      MAJEUR, cpt, _solde(r))
 
     # INT-12 : report du resultat N-1 en balance d'entree N.
     #

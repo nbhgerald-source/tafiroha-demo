@@ -290,6 +290,20 @@ def destination_client(conn, user):
     return "/mes-clients"
 
 
+def compte_exploitable(valeur):
+    """Un numero de compte commence par un chiffre.
+
+    Regle unique pour l'import CSV, l'import xlsx, la purge et la page de
+    codification. Le simple "contient un chiffre" ne suffisait pas : un
+    sous-total intitule "TOTAL CLASSE 1" passait le filtre, puis
+    account_table_code en retirait les lettres et le rattachait au compte
+    1000 — un montant parasite entrait ainsi dans le bilan sans alerte.
+    Les comptes auxiliaires alphanumeriques (411CLI001) commencent bien par
+    un chiffre et restent acceptes."""
+    s = str(valeur or "").strip()
+    return bool(s) and s[0].isdigit()
+
+
 def parse_csv_balance(file_bytes):
     """CSV attendu : compte;designation;be_debit;be_credit;mvt_debit;mvt_credit;bs_debit;bs_credit"""
     text = file_bytes.decode("utf-8-sig", errors="replace")
@@ -311,9 +325,8 @@ def parse_csv_balance(file_bytes):
     for r in data_rows:
         if not r or not r[0].strip():
             continue
-        # une ligne dont le premier champ ne contient aucun chiffre n'est pas
-        # un compte : en-tete, sous-total ou libelle de rupture
-        if not any(ch.isdigit() for ch in r[0]):
+        # en-tete, sous-total ou libelle de rupture : pas un compte
+        if not compte_exploitable(r[0]):
             continue
         r = r + [""] * (8 - len(r))
         out.append({
@@ -357,6 +370,10 @@ def _read_table_rows(wb, table_name):
             for row in cells[1:]:
                 compte = row[col_idx["Compte"]].value
                 if compte in (None, ""):
+                    continue
+                # Meme regle que pour l'import CSV : en-tete restee dans le
+                # tableau, sous-total ou libelle de rupture n'est pas un compte.
+                if not compte_exploitable(compte):
                     continue
 
                 def val(key):
@@ -4843,8 +4860,7 @@ def _purger_lignes_sans_compte(conn, exercice_id):
     lignes = conn.execute(
         "SELECT id, compte FROM balance_lignes WHERE exercice_id=?", (exercice_id,)
     ).fetchall()
-    ids = [r["id"] for r in lignes
-           if not any(c.isdigit() for c in str(r["compte"] or ""))]
+    ids = [r["id"] for r in lignes if not compte_exploitable(r["compte"])]
     for i in ids:
         conn.execute("DELETE FROM balance_lignes WHERE id=?", (i,))
     conn.commit()
@@ -5257,9 +5273,20 @@ def view_pointage(req, conn, user, exercice_id):
         deja.add(cpt)
         lignes_n1_seules.append(r)
 
+    # Une ligne sans aucun chiffre dans le numero de compte n'est pas un
+    # compte : en-tete restee dans le fichier, sous-total, libelle de rupture.
+    # La proposer a la codification n'a pas de sens — elle est sortie de la
+    # liste et signalee a part, avec le bouton de suppression (INT-14).
+    lignes_sans_compte = [
+        str(r["compte"]) for r in list(balN) + lignes_n1_seules
+        if not compte_exploitable(r["compte"])
+    ]
+
     lignes = []
     for r in list(balN) + lignes_n1_seules:
         cpt = str(r["compte"])
+        if not compte_exploitable(cpt):
+            continue
         seulement_n1 = cpt not in comptes_n
         sn = 0.0 if seulement_n1 else (r["bs_debit"] - r["bs_credit"])
         s1 = soldes_n1.get(cpt, 0.0)
@@ -5384,6 +5411,7 @@ def view_pointage(req, conn, user, exercice_id):
         comptes_uniques=comptes_uniques, nb_n1_seules=nb_n1_seules,
         plan_comptable=plan_comptable_options(),
         nb_anomalies=sum(1 for l in lignes if l["anomalie"]),
+        lignes_sans_compte=lignes_sans_compte,
     ))
 
 
