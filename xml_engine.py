@@ -40,7 +40,7 @@ import os
 import re
 import sys
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ── Chargement du mapping XML (une fois au démarrage du module) ──────────────
 
@@ -85,6 +85,196 @@ def _derniere_row(s: str) -> int:
     """Extrait le numéro de ligne depuis une adresse cellule style 'AH29'."""
     m = re.match(r"[A-Z]+(\d+)", s)
     return int(m.group(1)) if m else 0
+
+
+# ── Passerelle FICHE R1 / R2 / R3 ───────────────────────────────────────────
+#
+# Les feuilles d'identification ne sont pas des feuilles de calcul : elles sont
+# saisies dans l'application, qui les range dans note_texte sous des NOMS de
+# champ (sheet="SOMMAIRE", champ="exercice_debut") et non sous des coordonnees
+# Excel. _get_value, lui, interroge note_texte[onglet]["N8"] : les deux
+# adressages ne se rencontrent jamais et tout le bloc FR1/FR2/FR3 sortait vide
+# du fichier EDI — la plateforme e-impots recevait une liasse sans en-tete.
+#
+# Cette table retablit la correspondance, code DGI par code DGI. Les cellules
+# et les libelles proviennent de ListeChampsTableauxFixes /
+# ListeColonnesTableauxVariables du classeur officiel.
+
+def _date_fr(v):
+    """Normalise une date en jj/mm/aaaa (format attendu par GetValeur VBA)."""
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return s
+
+
+def _codes_fiche_r2(somm):
+    """ZX / ZY / ZZ1 : codes statistiques recalcules depuis les choix faits sur
+    SOMMAIRE, comme les formules INDEX/MATCH du classeur (FICHE R2 Q9/Q11/Q13).
+    Les tables de choix vivent dans app.py ; import tardif pour ne pas creer de
+    cycle (app importe deja xml_engine)."""
+    try:
+        import app as _app
+    except Exception:
+        return "", "", ""
+    zx = ""
+    forme = somm.get("forme_juridique", "")
+    choix = getattr(_app, "FORME_JURIDIQUE_CHOICES", [])
+    if forme in choix:
+        agrement = "1" if somm.get("agrement_prioritaire") == "Oui" else "0"
+        zx = agrement + str(choix.index(forme))
+    zy = ""
+    regime = somm.get("regime_fiscal", "")
+    choix = getattr(_app, "REGIME_FISCAL_CHOICES", [])
+    if regime in choix:
+        zy = str(choix.index(regime) + 1)
+    zz1 = getattr(_app, "PAYS_SIEGE_CODES", {}).get(somm.get("pays_siege", ""), "")
+    return zx, zy, zz1
+
+
+def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
+    """Retourne (fixes, variables) :
+
+        fixes     : {code_champ: (valeur, est_texte)}
+        variables : {(code_colonne, no_ligne): (valeur, est_texte)}
+
+    Seules les valeurs reellement saisies sont renvoyees : une entree vide est
+    omise, exactement comme le fait la macro officielle qui ne retient que les
+    cellules dont le texte affiche n'est pas vide.
+    """
+    somm = ntexte.get("SOMMAIRE", {}) or {}
+    r1 = ntexte.get("FICHE R1", {}) or {}
+    r2 = ntexte.get("FICHE R2", {}) or {}
+    r3 = ntexte.get("FICHE R3", {}) or {}
+
+    T, N = True, False          # est_texte
+    fixes = {}
+
+    def put(code, valeur, est_texte=T):
+        s = "" if valeur is None else str(valeur).strip()
+        if s:
+            fixes[code] = (s, est_texte)
+
+    # ── FICHE R1 ────────────────────────────────────────────────────────────
+    put("NO_FR1_ZA1_1", _date_fr(somm.get("exercice_debut") or exo.get("date_debut")))
+    put("NO_FR1_ZA2_1", _date_fr(somm.get("exercice_fin") or exo.get("date_fin")))
+    put("NO_FR1_ZB_1",  _date_fr(somm.get("date_arret_comptes")))
+    # ZC "exercice precedent clos le" : l'application ne saisit pas cette date.
+    # Elle se deduit sans ambiguite du debut de l'exercice courant — la veille.
+    # ZD (duree de l'exercice precedent en mois) n'a aucune source : laisse vide
+    # plutot que devine.
+    debut = _date_fr(somm.get("exercice_debut") or exo.get("date_debut"))
+    try:
+        veille = datetime.strptime(debut, "%d/%m/%Y") - timedelta(days=1)
+        put("NO_FR1_ZC_1", veille.strftime("%d/%m/%Y"))
+    except ValueError:
+        pass
+    put("NO_FR1_ZE1_1", somm.get("greffe"))
+    put("NO_FR1_ZE2_1", somm.get("rccm"))
+    put("NO_FR1_ZF_1",  somm.get("repertoire_entreprises"))
+    put("NO_FR1_ZG_1",  somm.get("caisse_sociale"))
+    put("NO_FR1_ZH_1",  somm.get("code_importateur"))
+    put("NO_FR1_ZI_1",  somm.get("code_activite"))
+    put("NO_FR1_ZK1_1", somm.get("email"))
+    put("NO_FR1_ZK2_1", somm.get("boite_postale_code"))
+    put("NO_FR1_ZK4_1", somm.get("boite_postale_ville"))
+    put("NO_FR1_ZL_1",  client.get("adresse"))
+    # L'application saisit la personne a contacter et l'expert-comptable en une
+    # seule zone de texte, la DGI les attend eclates (nom / adresse / tel /
+    # mail / qualite). On porte la saisie dans la zone "Nom" plutot que de la
+    # perdre ; les autres zones restent vides tant qu'elles ne sont pas saisies
+    # separement dans l'application.
+    put("NO_FR1_ZO1_1", r1.get("contact_nom"))
+    put("NO_FR1_ZP1_1", r1.get("expert_comptable"))
+    put("NO_FR1_ZT_1",  r1.get("signataire_nom"))
+    put("NO_FR1_ZU_1",  r1.get("signataire_qualite"))
+    put("NO_FR1_ZV_1",  _date_fr(r1.get("signataire_date")))
+
+    # ── FICHE R2 ────────────────────────────────────────────────────────────
+    zx, zy, zz1 = _codes_fiche_r2(somm)
+    put("NO_FR2A_ZX_1",  zx)
+    put("NO_FR2A_ZY_1",  zy)
+    put("NO_FR2A_ZZ1_1", zz1)
+    put("NO_FR2A_ZZ2_1", r2.get("nb_etabl_pays"), N)
+    put("NO_FR2A_ZZ3_1", r2.get("nb_etabl_hors_pays"), N)
+    put("NO_FR2A_ZZ4_1", somm.get("annee_premier_exercice"), N)
+    put("NO_FR2A_1_1",   r2.get("type_controle"))
+    put("NO_FR2C_1_1",   r2.get("type_montant_activite"))
+
+    # ── FICHE R2B — activites (tableau variable) ────────────────────────────
+    variables = {}
+    montants, total = {}, 0.0
+    nb_act = int(getattr(__import__("sys").modules.get("app"), "FICHE_R2_ACTIVITES_ROWS", 6) or 6)
+    for i in range(1, nb_act + 1):
+        try:
+            m = float(str(r2.get("activite_%d_montant" % i, "") or 0).replace(" ", "").replace(",", "."))
+        except ValueError:
+            m = 0.0
+        montants[i] = m
+        total += m
+    ligne = 0
+    for i in range(1, nb_act + 1):
+        designation = (r2.get("activite_%d_designation" % i, "") or "").strip()
+        code_act = (r2.get("activite_%d_code" % i, "") or "").strip()
+        if not (designation or code_act or montants[i]):
+            continue
+        ligne += 1
+        if designation:
+            variables[("NO_FR2B_1", ligne)] = (designation, T)
+        if code_act:
+            variables[("NO_FR2B_2", ligne)] = (code_act, T)
+        if montants[i]:
+            variables[("NO_FR2B_3", ligne)] = (montants[i], N)
+            if total:
+                variables[("NO_FR2B_4", ligne)] = (round(montants[i] / total, 4), N)
+    if total:
+        fixes["NO_FR2D_1_1"] = (total, N)
+        fixes["NO_FR2D_1_2"] = (1, N)
+
+    # ── FICHE R3 — dirigeants et conseil d'administration ───────────────────
+    def _nb(cle, defaut):
+        try:
+            return int(float(note3.get("FICHE R3", {}).get(cle, defaut) or defaut))
+        except (TypeError, ValueError):
+            return defaut
+
+    ligne = 0
+    for i in range(1, _nb("_N_DIRIGEANT", 5) + 1):
+        champs = {
+            "NO_FR3A_1": r3.get("dirigeant_%d_nom" % i),
+            "NO_FR3A_2": r3.get("dirigeant_%d_nationalite" % i),
+            "NO_FR3A_4": r3.get("dirigeant_%d_qualite" % i),
+            "NO_FR3A_5": r3.get("dirigeant_%d_nif" % i),
+            "NO_FR3A_6": r3.get("dirigeant_%d_adresse" % i),
+        }
+        if not any((v or "").strip() for v in champs.values()):
+            continue
+        ligne += 1
+        for code, v in champs.items():
+            if (v or "").strip():
+                variables[(code, ligne)] = (str(v).strip(), T)
+
+    ligne = 0
+    for i in range(1, _nb("_N_ADMIN", 5) + 1):
+        champs = {
+            "NO_FR3B_1": r3.get("admin_%d_nom" % i),
+            "NO_FR3B_2": r3.get("admin_%d_structure" % i),
+            "NO_FR3B_3": r3.get("admin_%d_qualite" % i),
+            "NO_FR3B_4": r3.get("admin_%d_adresse" % i),
+        }
+        if not any((v or "").strip() for v in champs.values()):
+            continue
+        ligne += 1
+        for code, v in champs.items():
+            if (v or "").strip():
+                variables[(code, ligne)] = (str(v).strip(), T)
+
+    return fixes, variables
 
 
 # ── Lecture de la valeur d'une cellule ──────────────────────────────────────
@@ -286,12 +476,20 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
     out.append(f"    <exercice>{_esc(annee)}</exercice>")
     out.append("  </informations>")
 
+    # Identification (FICHE R1 / R2 / R3) : ces feuilles sont saisies, pas
+    # calculees, et l'application les range par nom de champ et non par
+    # coordonnee Excel — elles ne peuvent donc pas passer par _get_value.
+    fiches_fixes, fiches_vars = _fiches_identification(client, exo, ntexte, note3)
+
     # --- champsTableauxFixes ---
     out.append("  <champsTableauxFixes>")
     for c in _CHAMPS_FIXES:
-        row = c["premiere_row"] + c["pos_ligne"] - 1
-        col = c["premiere_col"] + c["pos_col"] - 1
-        v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)
+        if c["code_champ"] in fiches_fixes:
+            v, is_text = fiches_fixes[c["code_champ"]]
+        else:
+            row = c["premiere_row"] + c["pos_ligne"] - 1
+            col = c["premiere_col"] + c["pos_col"] - 1
+            v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)
         fv = _format_value(v, is_text)
         if fv is not None:
             out.append("    <champTableauFixe>")
@@ -315,11 +513,23 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
         last_row     = _derniere_row(derniere_str) if derniere_str else premiere_row
         n_rows       = last_row - premiere_row + 1
 
-        for i_ligne in range(1, n_rows + 1):
+        # Les tableaux d'identification ont un nombre de lignes propre : il
+        # vient de la saisie, pas de l'etendue d'une plage du classeur.
+        lignes_fiche = sorted({l for (code, l) in fiches_vars
+                               if code in {c["code_colonne"] for c in cols}})
+        plage = lignes_fiche if lignes_fiche else range(1, n_rows + 1)
+
+        for i_ligne in plage:
             row = premiere_row + i_ligne - 1
             for c in cols:
-                col = c["premiere_col"] + c["pos_col"] - 1
-                v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)
+                cle = (c["code_colonne"], i_ligne)
+                if cle in fiches_vars:
+                    v, is_text = fiches_vars[cle]
+                elif lignes_fiche:
+                    continue          # tableau d'identification : rien de plus
+                else:
+                    col = c["premiere_col"] + c["pos_col"] - 1
+                    v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)
                 fv = _format_value(v, is_text)
                 if fv is not None:
                     out.append("    <champTableauVariable>")
