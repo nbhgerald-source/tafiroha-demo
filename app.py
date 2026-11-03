@@ -1587,9 +1587,11 @@ NOTES_TEXTE_DEFS = [
         ("biodiversite", "Protection de la biodiversité"),
         ("impact_territorial", "Impact territorial, économique et social de l'activité"),
         ("relations_parties", "Relations avec les personnes/organisations intéressées par l'activité"),
+        ("sous_traitance", "Sous-traitance et fournisseurs"),
     ]),
     ("NOTE 38", "NOTE 38 — EVENEMENTS POSTERIEURS A LA CLOTURE DE L'EXERCICE", [
-        ("date_arrete", "Date d'arrêté des états financiers / organe ayant autorisé la publication"),
+        ("date_arrete", "Date d'arrêté des états financiers"),
+        ("organe_publication", "Organe ayant autorisé la publication des comptes"),
         ("avec_ajustement", "A — Evénements postérieurs donnant lieu à des ajustements"),
         ("sans_ajustement", "B — Evénements postérieurs ne donnant pas lieu à des ajustements"),
         ("continuite", "C — Evénements remettant en cause la continuité d'exploitation"),
@@ -1622,7 +1624,9 @@ SOMMAIRE_CHAMPS = [
     ("exercice_fin", "Exercice clos le (au)"),
     ("activite_principale", "Désignation de l'activité"),
     ("exercice_precedent_debut", "Exercice précédent du"),
+    ("exercice_precedent_fin", "Exercice précédent clos le"),
     ("boite_postale_code", "Boîte Postale — code"),
+    ("boite_postale", "Boîte Postale — numéro"),
     ("boite_postale_ville", "Boîte Postale — ville"),
     ("date_arret_comptes", "Date d'arrêt des comptes"),
     ("commune", "Commune"),
@@ -2153,10 +2157,23 @@ GARDE_DOCUMENTS = [
 # commissaire aux comptes, signataire, domiciliations bancaires) : ne
 # proviennent pas de Sommaire, donc directement en note_texte (sheet=
 # "FICHE R1"), sans repli sur GARDE.
+# La DGI attend la personne a contacter et l'expert-comptable eclates en
+# sous-zones (codes ZO1..ZO5 et ZP1..ZP4 de la FICHE R1). Les deux zones
+# libres d'origine sont conservees : elles restent lisibles a l'ecran et
+# servent de repli a l'export pour les dossiers deja saisis.
 FICHE_R1_CHAMPS = [
-    ("contact_nom", "Personne à contacter (nom, adresse, téléphone, e-mail, qualité)"),
-    ("expert_comptable", "Expert-comptable ayant établi les états financiers"),
+    ("contact_nom", "Personne à contacter — nom"),
+    ("contact_adresse", "Personne à contacter — adresse"),
+    ("contact_telephone", "Personne à contacter — téléphone"),
+    ("contact_email", "Personne à contacter — e-mail"),
+    ("contact_qualite", "Personne à contacter — qualité"),
+    ("expert_comptable", "Expert-comptable — nom"),
+    ("expert_adresse", "Expert-comptable — adresse"),
+    ("expert_telephone", "Expert-comptable — téléphone"),
+    ("expert_email", "Expert-comptable — e-mail"),
     ("commissaire_comptes", "Commissaire aux comptes (attestation du visa / mission)"),
+    ("capacite_production", "% de capacité de production utile"),
+    ("approuves_par", "États financiers approuvés par (organe)"),
     ("signataire_nom", "Nom du signataire des états financiers"),
     ("signataire_qualite", "Qualité du signataire"),
     ("signataire_date", "Date de signature"),

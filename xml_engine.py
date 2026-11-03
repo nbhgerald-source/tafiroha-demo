@@ -137,6 +137,93 @@ def _codes_fiche_r2(somm):
     return zx, zy, zz1
 
 
+# ── Notes litteraires : meme defaut que les fiches d'identification ─────────
+#
+# NOTE 2, 35, 38, 39 et la feuille COMMENTAIRE sont saisies en texte libre et
+# rangees dans note_texte sous des noms de champ. Elles ne pouvaient donc pas
+# passer par _get_value, qui cherche une coordonnee Excel. Correspondance
+# etablie code par code sur les libelles de ListeChampsTableauxFixes ; pour
+# COMMENT, le referentiel donne directement le tableau vise en libelle de
+# ligne (NO_NOTE3A, NO_SUPPL6, ...), la table ci-dessous le transpose vers la
+# feuille et la zone correspondantes de l'application.
+
+_NOTES_TEXTE_MAP = {
+    # NOTE 2 — informations obligatoires
+    "NO_NOTE2_1_1": ("NOTE 2", "conformite"),
+    "NO_NOTE2_2_1": ("NOTE 2", "regles_methodes"),
+    "NO_NOTE2_3_1": ("NOTE 2", "derogations"),
+    "NO_NOTE2_4_1": ("NOTE 2", "infos_complementaires"),
+    # NOTE 35 — informations sociales, environnementales et societales
+    "NO_NOTE35_2_1":  ("NOTE 35", "emploi"),
+    "NO_NOTE35_3_1":  ("NOTE 35", "relations_sociales"),
+    "NO_NOTE35_4_1":  ("NOTE 35", "sante_securite"),
+    "NO_NOTE35_5_1":  ("NOTE 35", "formation"),
+    "NO_NOTE35_6_1":  ("NOTE 35", "egalite"),
+    "NO_NOTE35_8_1":  ("NOTE 35", "env_general"),
+    "NO_NOTE35_9_1":  ("NOTE 35", "pollution_dechets"),
+    "NO_NOTE35_10_1": ("NOTE 35", "ressources"),
+    "NO_NOTE35_11_1": ("NOTE 35", "climat"),
+    "NO_NOTE35_12_1": ("NOTE 35", "biodiversite"),
+    "NO_NOTE35_14_1": ("NOTE 35", "impact_territorial"),
+    "NO_NOTE35_15_1": ("NOTE 35", "relations_parties"),
+    "NO_NOTE35_16_1": ("NOTE 35", "sous_traitance"),
+    # NOTE 38 — evenements posterieurs a la cloture
+    "NO_NOTE38A_1_1": ("NOTE 38", "date_arrete"),
+    "NO_NOTE38A_2_1": ("NOTE 38", "organe_publication"),
+    "NO_NOTE38B_1_1": ("NOTE 38", "avec_ajustement"),
+    "NO_NOTE38B_2_1": ("NOTE 38", "sans_ajustement"),
+    "NO_NOTE38B_3_1": ("NOTE 38", "continuite"),
+    # NOTE 39 — changements de methodes, d'estimations, corrections d'erreurs
+    "NO_NOTE39_1_1": ("NOTE 39", "methodes"),
+    "NO_NOTE39_2_1": ("NOTE 39", "estimations"),
+    "NO_NOTE39_3_1": ("NOTE 39", "corrections"),
+    # COMMENTAIRE — une zone par note
+    "NO_COMMENT_11_1": ("NOTE 1", "commentaire_0"),
+    "NO_COMMENT_13_1": ("NOTE 3A", "commentaire_0"),
+    "NO_COMMENT_14_1": ("NOTE 3B", "commentaire_0"),
+    "NO_COMMENT_15_1": ("NOTE 3C", "commentaire_0"),
+    "NO_COMMENT_16_1": ("NOTE 3C BIS", "commentaire_0"),
+    "NO_COMMENT_17_1": ("NOTE 3D", "commentaire_0"),
+    "NO_COMMENT_22_1": ("NOTE 4", "commentaire_0"),
+    "NO_COMMENT_23_1": ("NOTE 5", "commentaire_0"),
+    "NO_COMMENT_24_1": ("NOTE 5", "commentaire_1"),
+    "NO_COMMENT_25_1": ("NOTE 6", "commentaire_0"),
+    "NO_COMMENT_26_1": ("NOTE 7", "commentaire_0"),
+    "NO_COMMENT_27_1": ("NOTE 8", "commentaire_0"),
+    "NO_COMMENT_34_1": ("NOTE 9", "commentaire_0"),
+    "NO_COMMENT_35_1": ("NOTE 10", "commentaire_0"),
+    "NO_COMMENT_36_1": ("NOTE 11", "commentaire_0"),
+    "NO_COMMENT_38_1": ("NOTE 12", "commentaire_0"),
+    "NO_COMMENT_40_1": ("NOTE 12", "commentaire_1"),
+    "NO_COMMENT_43_1": ("NOTE 13", "commentaire_0"),
+    "NO_COMMENT_44_1": ("NOTE 14", "commentaire_0"),
+    "NO_COMMENT_45_1": ("NOTE 15A", "commentaire_0"),
+    "NO_COMMENT_46_1": ("NOTE 15B", "commentaire_0"),
+    "NO_COMMENT_47_1": ("NOTE 16A", "commentaire_0"),
+    "NO_COMMENT_48_1": ("NOTE 16B", "commentaire_0"),
+    "NO_COMMENT_49_1": ("NOTE 16B", "commentaire_1"),
+    "NO_COMMENT_50_1": ("NOTE 16B", "commentaire_2"),
+    "NO_COMMENT_51_1": ("NOTE 16B BIS", "commentaire_0"),
+    "NO_COMMENT_52_1": ("NOTE 16B BIS", "commentaire_1"),
+    "NO_COMMENT_55_1": ("NOTE 16C", "commentaire_0"),
+    "NO_COMMENT_56_1": ("NOTE 17", "commentaire_0"),
+    "NO_COMMENT_57_1": ("NOTE 18", "commentaire_0"),
+    "NO_COMMENT_58_1": ("NOTE 19", "commentaire_0"),
+    "NO_COMMENT_59_1": ("NOTE 20", "commentaire_0"),
+    "NO_COMMENT_61_1": ("NOTE 21", "commentaire_0"),
+    "NO_COMMENT_62_1": ("NOTE 22", "commentaire_0"),
+    "NO_COMMENT_63_1": ("NOTE 23", "commentaire_0"),
+    "NO_COMMENT_64_1": ("NOTE 24", "commentaire_0"),
+    "NO_COMMENT_65_1": ("NOTE 25", "commentaire_0"),
+    "NO_COMMENT_66_1": ("NOTE 26", "commentaire_0"),
+    "NO_COMMENT_67_1": ("NOTE 27A", "commentaire_0"),
+    "NO_COMMENT_71_1": ("NOTE 27B", "commentaire_0"),
+    "NO_COMMENT_72_1": ("NOTE 28", "commentaire_0"),
+    "NO_COMMENT_73_1": ("NOTE 29", "commentaire_0"),
+    "NO_COMMENT_76_1": ("NOTE 30", "commentaire_0"),
+    "NO_COMMENT_106_1": ("SUPPL6", "commentaire_0"),
+}
+
 def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
     """Retourne (fixes, variables) :
 
@@ -149,6 +236,11 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
     """
     somm = ntexte.get("SOMMAIRE", {}) or {}
     r1 = ntexte.get("FICHE R1", {}) or {}
+    notes_texte = {}
+    for code, (feuille, champ) in _NOTES_TEXTE_MAP.items():
+        v = (ntexte.get(feuille, {}) or {}).get(champ)
+        if v is not None and str(v).strip():
+            notes_texte[code] = (str(v).strip(), True)
     r2 = ntexte.get("FICHE R2", {}) or {}
     r3 = ntexte.get("FICHE R3", {}) or {}
 
@@ -164,14 +256,27 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
     put("NO_FR1_ZA1_1", _date_fr(somm.get("exercice_debut") or exo.get("date_debut")))
     put("NO_FR1_ZA2_1", _date_fr(somm.get("exercice_fin") or exo.get("date_fin")))
     put("NO_FR1_ZB_1",  _date_fr(somm.get("date_arret_comptes")))
-    # ZC "exercice precedent clos le" : l'application ne saisit pas cette date.
-    # Elle se deduit sans ambiguite du debut de l'exercice courant — la veille.
-    # ZD (duree de l'exercice precedent en mois) n'a aucune source : laisse vide
-    # plutot que devine.
+    # ZC / ZD : cloture et duree de l'exercice precedent. Le classeur les tire
+    # de Sommaire (Q37 et MONTH(Q37)-MONTH(M37)+1, vide quand l'exercice est le
+    # premier). A defaut de saisie, ZC se deduit sans ambiguite : la veille du
+    # debut de l'exercice courant.
     debut = _date_fr(somm.get("exercice_debut") or exo.get("date_debut"))
+    prec_fin = _date_fr(somm.get("exercice_precedent_fin"))
+    prec_debut = _date_fr(somm.get("exercice_precedent_debut"))
+    if not prec_fin:
+        try:
+            prec_fin = (datetime.strptime(debut, "%d/%m/%Y")
+                        - timedelta(days=1)).strftime("%d/%m/%Y")
+        except ValueError:
+            prec_fin = ""
+    put("NO_FR1_ZC_1", prec_fin)
     try:
-        veille = datetime.strptime(debut, "%d/%m/%Y") - timedelta(days=1)
-        put("NO_FR1_ZC_1", veille.strftime("%d/%m/%Y"))
+        premiere = str(somm.get("annee_premier_exercice") or "").strip()
+        an_courant = datetime.strptime(debut, "%d/%m/%Y").year
+        if not (premiere and int(premiere) == an_courant):
+            d1 = datetime.strptime(prec_debut, "%d/%m/%Y")
+            d2 = datetime.strptime(prec_fin, "%d/%m/%Y")
+            put("NO_FR1_ZD_1", (d2.year - d1.year) * 12 + d2.month - d1.month + 1, N)
     except ValueError:
         pass
     put("NO_FR1_ZE1_1", somm.get("greffe"))
@@ -181,16 +286,63 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
     put("NO_FR1_ZH_1",  somm.get("code_importateur"))
     put("NO_FR1_ZI_1",  somm.get("code_activite"))
     put("NO_FR1_ZK1_1", somm.get("email"))
-    put("NO_FR1_ZK2_1", somm.get("boite_postale_code"))
+    # La DGI separe le code postal, le numero de boite et la ville. Les
+    # dossiers saisis avant l'ajout du champ "numero" portent souvent la
+    # mention complete ("18 BP 2383") dans le code : on la redecoupe.
+    bp_code = str(somm.get("boite_postale_code") or "").strip()
+    bp_num = str(somm.get("boite_postale") or "").strip()
+    if not bp_num:
+        m = re.match(r"^\s*(\d+)\s*BP\s*(\S+)\s*$", bp_code, re.IGNORECASE)
+        if m:
+            bp_code, bp_num = m.group(1), m.group(2)
+    put("NO_FR1_ZK2_1", bp_code)
+    put("NO_FR1_ZK3_1", bp_num)
     put("NO_FR1_ZK4_1", somm.get("boite_postale_ville"))
     put("NO_FR1_ZL_1",  client.get("adresse"))
-    # L'application saisit la personne a contacter et l'expert-comptable en une
-    # seule zone de texte, la DGI les attend eclates (nom / adresse / tel /
-    # mail / qualite). On porte la saisie dans la zone "Nom" plutot que de la
-    # perdre ; les autres zones restent vides tant qu'elles ne sont pas saisies
-    # separement dans l'application.
-    put("NO_FR1_ZO1_1", r1.get("contact_nom"))
-    put("NO_FR1_ZP1_1", r1.get("expert_comptable"))
+
+    # Personne a contacter (ZO1..ZO5) et expert-comptable (ZP1..ZP4). Les
+    # sous-zones saisies font foi ; pour les dossiers anterieurs, qui ne
+    # disposaient que d'une zone libre, on repartit ce qui est reconnaissable
+    # — un e-mail contient "@", un telephone est une suite de chiffres — et le
+    # premier fragment restant tient lieu de nom.
+    def _eclater(nom, adresse, tel, mail, qualite=None, avec_qualite=False):
+        vals = {"nom": nom, "adresse": adresse, "tel": tel,
+                "mail": mail, "qualite": qualite}
+        # Les sous-zones sont vides : la zone "nom" porte peut-etre encore une
+        # saisie libre du type "NOM, telephone, e-mail, qualite".
+        if not any((v or "").strip() for v in (adresse, tel, mail, qualite)):
+            reste = [p.strip() for p in str(nom or "").split(",") if p.strip()]
+            vals["nom"] = ""
+            garde = []
+            for p in reste:
+                if "@" in p and not vals["mail"]:
+                    vals["mail"] = p
+                elif re.fullmatch(r"[\d\s.+()-]{8,}", p) and not vals["tel"]:
+                    vals["tel"] = p
+                else:
+                    garde.append(p)
+            if garde:
+                vals["nom"] = garde.pop(0)
+            if garde and avec_qualite:
+                vals["qualite"] = garde.pop()
+            if garde:
+                vals["adresse"] = ", ".join(garde)
+        return vals
+
+    c = _eclater(r1.get("contact_nom"), r1.get("contact_adresse"),
+                 r1.get("contact_telephone"), r1.get("contact_email"),
+                 r1.get("contact_qualite"), avec_qualite=True)
+    put("NO_FR1_ZO1_1", c["nom"]);     put("NO_FR1_ZO2_1", c["adresse"])
+    put("NO_FR1_ZO3_1", c["tel"]);     put("NO_FR1_ZO4_1", c["mail"])
+    put("NO_FR1_ZO5_1", c["qualite"])
+
+    e = _eclater(r1.get("expert_comptable"), r1.get("expert_adresse"),
+                 r1.get("expert_telephone"), r1.get("expert_email"))
+    put("NO_FR1_ZP1_1", e["nom"]);     put("NO_FR1_ZP2_1", e["adresse"])
+    put("NO_FR1_ZP3_1", e["tel"]);     put("NO_FR1_ZP4_1", e["mail"])
+
+    put("NO_FR1_ZN_1",  r1.get("capacite_production"), N)
+    put("NO_FR1_ZS_1",  r1.get("approuves_par"))
     put("NO_FR1_ZT_1",  r1.get("signataire_nom"))
     put("NO_FR1_ZU_1",  r1.get("signataire_qualite"))
     put("NO_FR1_ZV_1",  _date_fr(r1.get("signataire_date")))
@@ -274,7 +426,11 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
             if (v or "").strip():
                 variables[(code, ligne)] = (str(v).strip(), T)
 
-    return fixes, variables
+    # Les notes litteraires viennent en premier : si un code est a la fois
+    # couvert ici et par une correspondance d'identification, c'est la fiche
+    # qui gagne (aucun chevauchement aujourd'hui, mais l'ordre est explicite).
+    notes_texte.update(fixes)
+    return notes_texte, variables
 
 
 # ── Lecture de la valeur d'une cellule ──────────────────────────────────────
