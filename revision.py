@@ -1152,7 +1152,7 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
 # ---------------------------------------------------------------------------
 # CPL  completude avant depot
 # ---------------------------------------------------------------------------
-def controles_cpl(c, client, exo, manual, balN):
+def controles_cpl(c, client, exo, manual, balN, textes=None):
     if not (client and str(client["ncc"] or "").strip()):
         c.add("CPL-01", "CPL",
               "NCC du client non renseigne : le fichier XML sera rejete par la DGI",
@@ -1177,17 +1177,44 @@ def controles_cpl(c, client, exo, manual, balN):
     if not balN:
         c.add("CPL-10", "CPL", "Aucune balance importee pour l'exercice N", BLOQUANT)
 
-    r1 = (manual or {}).get("FICHE R1") or {}
-    if not any(str(x).strip() for x in r1.values()):
+    # Les fiches R1/R2/R3 sont saisies en texte libre et rangees dans
+    # note_texte, pas dans note3_manuel : c'est "textes" qu'il faut lire ici.
+    # Interroger "manual" faisait echouer ces trois controles en permanence,
+    # meme sur un dossier entierement renseigne.
+    t = textes or {}
+    r1 = t.get("FICHE R1") or {}
+    manquants = [lbl for cle, lbl in (("signataire_nom", "nom du signataire"),
+                                      ("signataire_date", "date de signature"))
+                 if not str(r1.get(cle, "") or "").strip()]
+    if manquants:
         c.add("CPL-03", "CPL",
-              "Fiche R1 non renseignee : signataire et date de signature obligatoires",
+              "Fiche R1 incomplete : %s a renseigner." % " et ".join(manquants),
               MAJEUR)
-    r2 = (manual or {}).get("FICHE R2") or {}
-    if not any(str(x).strip() for x in r2.values()):
+
+    r2 = t.get("FICHE R2") or {}
+    indices = sorted({int(k.split("_")[1]) for k in r2
+                      if k.startswith("activite_") and k.split("_")[1].isdigit()})
+    lignes = [("activite_%d" % i) for i in indices] + ["activite_divers"]
+    avec_designation = [p for p in lignes
+                        if str(r2.get(p + "_designation", "") or "").strip()]
+    sans_code = [p for p in avec_designation
+                 if not str(r2.get(p + "_code", "") or "").strip()]
+    if not avec_designation:
         c.add("CPL-04", "CPL",
-              "Fiche R2 non renseignee : activites et code CIAP obligatoires", MAJEUR)
-    r3 = (manual or {}).get("FICHE R3") or {}
-    if not any(str(x).strip() for x in r3.values()):
+              "Fiche R2 : aucune activite renseignee. La designation et le code "
+              "CIAP d'au moins une activite sont obligatoires.", MAJEUR)
+    elif sans_code:
+        c.add("CPL-04", "CPL",
+              "Fiche R2 : %d activite%s sans code CIAP (%s)."
+              % (len(sans_code), "s" if len(sans_code) > 1 else "",
+                 ", ".join(str(r2.get(p + "_designation", ""))[:28] for p in sans_code[:4])),
+              MAJEUR)
+
+    r3 = t.get("FICHE R3") or {}
+    dirigeants = [k for k in r3
+                  if k.startswith("dirigeant_") and k.endswith("_nom")
+                  and str(r3.get(k, "") or "").strip()]
+    if not dirigeants:
         c.add("CPL-05", "CPL", "Fiche R3 : aucun dirigeant renseigne", MAJEUR)
 
 
@@ -1196,7 +1223,7 @@ def controles_cpl(c, client, exo, manual, balN):
 # ---------------------------------------------------------------------------
 def run_controls(balN, balN1, bilan=None, resultat=None, tft=None, manual=None,
                  client=None, exo=None, sheets_raw=None, params=None, overrides=None,
-                 mappings=None, notes=None, condenser=True):
+                 mappings=None, notes=None, condenser=True, textes=None):
     """Execute l'ensemble des familles et retourne la liste des anomalies.
 
     condenser=False renvoie le detail integral, sans regroupement : c'est ce que
@@ -1226,7 +1253,7 @@ def run_controls(balN, balN1, bilan=None, resultat=None, tft=None, manual=None,
         (controles_stk, (balN, balN1), "STK"),
         (controles_var, (balN, balN1, bilan), "VAR"),
         (controles_eta, (bilan, resultat, tft, balN, balN1, notes), "ETA"),
-        (controles_cpl, (client, exo, manual, balN), "CPL"),
+        (controles_cpl, (client, exo, manual, balN, textes), "CPL"),
     ):
         try:
             fn(c, *args)

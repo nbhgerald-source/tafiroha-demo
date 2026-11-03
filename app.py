@@ -4377,7 +4377,8 @@ def lancer_revision(conn, exercice_id, exo, client):
 
     anomalies = revision.run_controls(
         balN, balN1, bilan, resultat, tft,
-        manual=manual, client=client, exo=exo,
+        manual=manual, textes=load_note_texte(conn, exercice_id) or {},
+        client=client, exo=exo,
         sheets_raw=ce.SHEETS_RAW,
         params=_revision_params(conn, client["id"] if client else None),
         overrides=_revision_overrides(conn, client["id"] if client else None),
@@ -4466,6 +4467,7 @@ def _revision_detail_complet(conn, exercice_id, exo, client):
     return revision.run_controls(
         balN, balN1, bilan, resultat, tft,
         manual=load_note3_manual(conn, exercice_id) or {},
+        textes=load_note_texte(conn, exercice_id) or {},
         client=client, exo=exo, sheets_raw=ce.SHEETS_RAW,
         params=_revision_params(conn, client["id"] if client else None),
         overrides=_revision_overrides(conn, client["id"] if client else None),
