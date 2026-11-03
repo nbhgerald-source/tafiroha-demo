@@ -1193,7 +1193,7 @@
       <tr><th>Désignation de l'activité</th><th id="th-montant-activite">{{ fiche_r2.get('type_montant_activite', 'CA HT') }}</th><th>Code nomenclature</th><th>% activité dans le {{ fiche_r2.get('type_montant_activite', 'CA HT') }}</th></tr>
       {% for i in fiche_r2_activites_rows %}
       <tr>
-        <td><input type="text" name="texte_activite_{{ i }}_designation" value="{{ fiche_r2.get('activite_%d_designation' % i, '') }}" placeholder="{{ 'Divers' if i == (fiche_r2_activites_rows|last) else '' }}"></td>
+        <td><input type="text" name="texte_activite_{{ i }}_designation" value="{{ fiche_r2.get('activite_%d_designation' % i, '') }}"></td>
         <td><input type="text" size="12" name="texte_activite_{{ i }}_montant" value="{{ fiche_r2.get('activite_%d_montant' % i, '') }}"></td>
         <td><input type="text" name="texte_activite_{{ i }}_code"
                value="{{ fiche_r2.get('activite_%d_code' % i, '') }}"
@@ -1202,12 +1202,27 @@
       </tr>
       {% endfor %}
       <tr>
+        <td><input type="text" name="texte_activite_divers_designation"
+               value="{{ fiche_r2.get('activite_divers_designation', '') }}" placeholder="Divers"></td>
+        <td><input type="text" size="12" name="texte_activite_divers_montant"
+               value="{{ fiche_r2.get('activite_divers_montant', '') }}"></td>
+        <td><input type="text" name="texte_activite_divers_code"
+               value="{{ fiche_r2.get('activite_divers_code', '') }}"
+               list="ciap-datalist" autocomplete="off" placeholder="Code CIAP" style="width:10rem"></td>
+        <td>{{ ('%.2f'|format(fiche_r2_divers_pct)) ~ ' %' if fiche_r2_divers_pct is not none else '' }}</td>
+      </tr>
+      <tr>
         <td><strong>TOTAL</strong></td>
         <td><strong>{{ fiche_r2_activite_total }}</strong></td>
         <td></td>
         <td><strong>{{ '100,00 %' if fiche_r2_activite_total else '' }}</strong></td>
       </tr>
     </table>
+    <input type="hidden" name="cell__N_ACTIVITE" value="{{ n_activites }}">
+    <button class="btn" type="submit" name="ajouter__N_ACTIVITE" value="1"
+            style="background:#52606b">+ Ajouter une activité</button>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">
+      La nouvelle ligne s'insère avant « Divers », qui reste toujours en dernier.</p>
     <script>
       document.querySelectorAll('input[name="texte_type_montant_activite"]').forEach(function(r){
         r.addEventListener('change', function(){
@@ -1237,6 +1252,7 @@
       </tr>
       {% endfor %}
     </table>
+    <input type="hidden" name="cell__N_DIRIGEANT" value="{{ n_dirigeants }}">
     <button class="btn" type="submit" name="ajouter__N_DIRIGEANT" value="1">+ Ajouter une ligne</button>
     <h4>Membres du Conseil d'Administration</h4>
     <table>
@@ -1250,6 +1266,7 @@
       </tr>
       {% endfor %}
     </table>
+    <input type="hidden" name="cell__N_ADMIN" value="{{ n_admin }}">
     <button class="btn" type="submit" name="ajouter__N_ADMIN" value="1">+ Ajouter une ligne</button>
     <button class="btn" type="submit">Enregistrer</button>
   </form>

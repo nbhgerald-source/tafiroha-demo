@@ -359,31 +359,40 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
     put("NO_FR2C_1_1",   r2.get("type_montant_activite"))
 
     # ── FICHE R2B — activites (tableau variable) ────────────────────────────
+    # Le nombre d'activites est libre ; la ligne "Divers" est rangee hors
+    # numerotation (activite_divers_*) et passe toujours en dernier, comme sur
+    # la feuille d'origine.
     variables = {}
-    montants, total = {}, 0.0
-    nb_act = int(getattr(__import__("sys").modules.get("app"), "FICHE_R2_ACTIVITES_ROWS", 6) or 6)
-    for i in range(1, nb_act + 1):
+
+    def _montant(cle):
         try:
-            m = float(str(r2.get("activite_%d_montant" % i, "") or 0).replace(" ", "").replace(",", "."))
+            return float(str(r2.get(cle, "") or 0).replace(" ", "").replace(",", "."))
         except ValueError:
-            m = 0.0
-        montants[i] = m
-        total += m
+            return 0.0
+
+    indices = sorted({int(k.split("_")[1]) for k in r2
+                      if k.startswith("activite_") and k.split("_")[1].isdigit()})
+    lignes_act = [("activite_%d" % i) for i in indices] + ["activite_divers"]
+    total = sum(_montant(p + "_montant") for p in lignes_act)
+
     ligne = 0
-    for i in range(1, nb_act + 1):
-        designation = (r2.get("activite_%d_designation" % i, "") or "").strip()
-        code_act = (r2.get("activite_%d_code" % i, "") or "").strip()
-        if not (designation or code_act or montants[i]):
+    for prefixe in lignes_act:
+        designation = (r2.get(prefixe + "_designation", "") or "").strip()
+        code_act = (r2.get(prefixe + "_code", "") or "").strip()
+        montant = _montant(prefixe + "_montant")
+        if not (designation or code_act or montant):
             continue
         ligne += 1
+        if prefixe == "activite_divers" and not designation:
+            designation = "Divers"
         if designation:
             variables[("NO_FR2B_1", ligne)] = (designation, T)
         if code_act:
             variables[("NO_FR2B_2", ligne)] = (code_act, T)
-        if montants[i]:
-            variables[("NO_FR2B_3", ligne)] = (montants[i], N)
+        if montant:
+            variables[("NO_FR2B_3", ligne)] = (montant, N)
             if total:
-                variables[("NO_FR2B_4", ligne)] = (round(montants[i] / total, 4), N)
+                variables[("NO_FR2B_4", ligne)] = (round(montant / total, 4), N)
     if total:
         fixes["NO_FR2D_1_1"] = (total, N)
         fixes["NO_FR2D_1_2"] = (1, N)

@@ -2179,9 +2179,13 @@ FICHE_R1_CHAMPS = [
     ("signataire_date", "Date de signature"),
 ]
 
-FICHE_R2_ACTIVITES_ROWS = 6  # 5 activités + ligne "Divers"
-FICHE_R3_DIRIGEANTS_ROWS = 5
-FICHE_R3_ADMIN_ROWS = 5
+# Les trois tableaux de saisie des fiches R2 et R3 s'ouvrent sur une seule
+# ligne et s'etendent au bouton "+ Ajouter une ligne". La ligne "Divers" de la
+# FICHE R2 n'est pas numerotee : elle est rangee a part (activite_divers_*) et
+# reste donc toujours la derniere, quel que soit le nombre d'activites ajoutees.
+FICHE_R2_ACTIVITES_ROWS = 1
+FICHE_R3_DIRIGEANTS_ROWS = 1
+FICHE_R3_ADMIN_ROWS = 1
 
 # Feuille "COMMENTAIRE" du classeur Excel : un encadre de saisie libre (2000
 # caracteres max) par note (ou par sous-rubrique pour les notes 5, 12, 16B et
@@ -5934,19 +5938,43 @@ def view_exercice(req, conn, user, exercice_id):
 
     fiche_r2_premiere_annee = sommaire_info.get("annee_premier_exercice", "")
 
+    # Nombre de lignes d'un tableau dynamique : le compteur enregistre, mais
+    # jamais moins que le rang de la derniere ligne effectivement saisie. Sans
+    # ce garde-fou, abaisser une valeur par defaut masquerait des lignes deja
+    # renseignees — elles resteraient en base, invisibles et non exportees.
+    def _n_lignes(feuille, compteur, donnees, prefixe, champs, defaut=1):
+        try:
+            n = int(ce._num(note3_manual.get(feuille, {}).get(compteur, 0)))
+        except (TypeError, ValueError):
+            n = 0
+        rempli = 0
+        for i in range(1, 101):
+            if any(str(donnees.get("%s_%d_%s" % (prefixe, i, c), "") or "").strip()
+                   for c in champs):
+                rempli = i
+        return max(n, rempli, defaut)
+
     # Tableau "Activité de l'entité" : % de chaque activité = montant/total
-    # (Excel AH28=IFERROR(Y28/$Y$30,"")), + ligne TOTAL (Y30/AH30).
+    # (Excel AH28=IFERROR(Y28/$Y$30,"")), + ligne TOTAL (Y30/AH30). La ligne
+    # "Divers" est stockee hors numerotation pour rester en dernier.
+    n_activites = _n_lignes("FICHE R2", "_N_ACTIVITE", fiche_r2, "activite",
+                            ("designation", "montant", "code"),
+                            FICHE_R2_ACTIVITES_ROWS)
+    fiche_r2_activites_rows = list(range(1, n_activites + 1))
     fiche_r2_activite_montants = {
         i: ce._num(fiche_r2.get("activite_%d_montant" % i, ""))
-        for i in range(1, FICHE_R2_ACTIVITES_ROWS + 1)
+        for i in fiche_r2_activites_rows
     }
-    fiche_r2_activite_total = sum(fiche_r2_activite_montants.values())
+    divers_montant = ce._num(fiche_r2.get("activite_divers_montant", ""))
+    fiche_r2_activite_total = sum(fiche_r2_activite_montants.values()) + divers_montant
     fiche_r2_activite_pct = {}
     for i, montant in fiche_r2_activite_montants.items():
         if fiche_r2_activite_total:
             fiche_r2_activite_pct[i] = round(montant / fiche_r2_activite_total * 100, 2)
         else:
             fiche_r2_activite_pct[i] = None
+    fiche_r2_divers_pct = (round(divers_montant / fiche_r2_activite_total * 100, 2)
+                           if fiche_r2_activite_total else None)
 
     # FICHE R1 — "Domiciliations bancaires" : tableau a lignes dynamiques
     # (Banque / N° de compte), meme mecanisme "+ Ajouter une ligne" que les
@@ -5965,10 +5993,12 @@ def view_exercice(req, conn, user, exercice_id):
     # FICHE R3 — "Dirigeants" et "Membres du Conseil d'Administration" :
     # mêmes tableaux à lignes dynamiques que la Fiche R1 (Banque/N° compte),
     # un compteur "+ Ajouter une ligne" indépendant par sous-groupe.
-    n_dirigeants = int(ce._num(note3_manual.get("FICHE R3", {}).get(
-        "_N_DIRIGEANT", FICHE_R3_DIRIGEANTS_ROWS))) or FICHE_R3_DIRIGEANTS_ROWS
-    n_admin = int(ce._num(note3_manual.get("FICHE R3", {}).get(
-        "_N_ADMIN", FICHE_R3_ADMIN_ROWS))) or FICHE_R3_ADMIN_ROWS
+    n_dirigeants = _n_lignes("FICHE R3", "_N_DIRIGEANT", fiche_r3, "dirigeant",
+                             ("nom", "nationalite", "qualite", "nif", "adresse"),
+                             FICHE_R3_DIRIGEANTS_ROWS)
+    n_admin = _n_lignes("FICHE R3", "_N_ADMIN", fiche_r3, "admin",
+                        ("nom", "structure", "qualite", "adresse"),
+                        FICHE_R3_ADMIN_ROWS)
     fiche_r3_dirigeants_rows = range(1, n_dirigeants + 1)
     fiche_r3_admin_rows = range(1, n_admin + 1)
 
@@ -6020,7 +6050,9 @@ def view_exercice(req, conn, user, exercice_id):
         },
         fiche_r1=fiche_r1, fiche_r1_champs=FICHE_R1_CHAMPS, fiche_r1_banques=fiche_r1_banques,
         fiche_r2=fiche_r2, fiche_r3=fiche_r3,
-        fiche_r2_activites_rows=range(1, FICHE_R2_ACTIVITES_ROWS + 1),
+        fiche_r2_activites_rows=fiche_r2_activites_rows,
+        fiche_r2_divers_pct=fiche_r2_divers_pct,
+        n_activites=n_activites, n_dirigeants=n_dirigeants, n_admin=n_admin,
         type_controle_choices=TYPE_CONTROLE_CHOICES,
         fiche_r2_zx=fiche_r2_zx, fiche_r2_zy=fiche_r2_zy, fiche_r2_zz1=fiche_r2_zz1,
         fiche_r2_premiere_annee=fiche_r2_premiere_annee,
