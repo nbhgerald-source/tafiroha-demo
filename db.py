@@ -251,6 +251,23 @@ def _migrate_revision(conn):
 
 
 
+def _migrate_anomalies_resolues(conn):
+    """Marque les anomalies qui ne se reproduisent plus.
+
+    Une anomalie deja traitee puis corrigee dans la balance etait conservee
+    telle quelle, avec son libelle et son montant d'origine. Le dossier
+    affichait donc des chiffres perimes a cote d'etats a jour — par exemple un
+    resultat de 55 332 424 alors que le compte de resultat en montre 22 536 995
+    depuis la codification. Ces deux colonnes permettent de distinguer la trace
+    d'un travail accompli d'un constat encore d'actualite."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(revision_anomalies)")}
+    if "resolue" not in cols:
+        conn.execute("ALTER TABLE revision_anomalies ADD COLUMN resolue INTEGER NOT NULL DEFAULT 0")
+    if "resolue_le" not in cols:
+        conn.execute("ALTER TABLE revision_anomalies ADD COLUMN resolue_le TEXT")
+    conn.commit()
+
+
 def _migrate_user_clients(conn):
     """Rattachement d'un utilisateur a PLUSIEURS clients.
 
@@ -304,6 +321,7 @@ def init_db():
     conn.commit()
     _migrate_default_accounts(conn)
     _migrate_revision(conn)
+    _migrate_anomalies_resolues(conn)
     _migrate_user_clients(conn)
     _migrate_pointage(conn)
     _repair_dangling_users_old_refs(conn)

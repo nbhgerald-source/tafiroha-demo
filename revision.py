@@ -556,6 +556,23 @@ def controles_sen(c, balN, overrides=None, mappings=None):
         elif 10100 <= table < 10500:
             c.add("SEN-08", "SEN",
                   "Capital au debit : erreur d'imputation", BLOQUANT, cpt, solde)
+        # Charges creditrices et produits debiteurs : signales quel que soit le
+        # montant. Les notes les deduisent desormais du poste concerne, comme
+        # le fait le compte de resultat ; sans ce signalement l'avoir ou
+        # l'annulation disparaitrait de la vue du reviseur. Le seuil de
+        # materialite ne s'applique donc pas ici.
+        elif 60000 <= table < 70000:
+            c.add("SEN-19", "SEN",
+                  "Compte de charge a solde crediteur : avoir, annulation ou erreur "
+                  "d'imputation. Le montant est deduit du poste dans la note et dans "
+                  "le compte de resultat ; verifiez qu'il s'agit bien d'une reduction "
+                  "de charge.", JUSTIFIER, cpt, solde)
+        elif 70000 <= table < 80000:
+            c.add("SEN-20", "SEN",
+                  "Compte de produit a solde debiteur : avoir sur vente, annulation ou "
+                  "erreur d'imputation. Le montant est deduit du poste dans la note et "
+                  "dans le compte de resultat ; verifiez qu'il s'agit bien d'une "
+                  "reduction de produit.", JUSTIFIER, cpt, solde)
         elif not c.seuil(solde):
             continue
         else:
@@ -1178,6 +1195,36 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
               "detaille depuis la page Codification."
               % (_fmt(amort_bilan), _fmt(amort_balance), _fmt(amort_bilan - amort_balance)),
               BLOQUANT, None, amort_bilan - amort_balance)
+
+    # ETA-19 a ETA-23 et ETA-26 : chaque note de charges est rapprochee de la
+    # ligne correspondante du compte de resultat. Les notes ventilent sur des
+    # sous-plages etroites ; un compte tenu a un niveau plus agrege echappe a
+    # leur grille et l'annexe sort fausse sans desequilibrer quoi que ce soit.
+    # Meme principe qu'ETA-16 (NOTE 21) et ETA-17 (NOTE 22).
+    NOTES_CHARGES = [
+        ("ETA-19", "NOTE 23",  "F16", 61000, 62000, "Transports"),
+        ("ETA-20", "NOTE 24",  "F24", 62000, 64000, "Services exterieurs"),
+        ("ETA-21", "NOTE 25",  "F14", 64000, 65000, "Impots et taxes"),
+        ("ETA-22", "NOTE 26",  "F19", 65000, 66000, "Autres charges"),
+        ("ETA-23", "NOTE 27A", "F17", 66000, 67000, "Charges de personnel"),
+        ("ETA-26", "NOTE 29",  "F19", 67000, 68000, "Frais financiers"),
+    ]
+    for code, feuille, coord, lo, hi, libelle in NOTES_CHARGES:
+        note = (notes or {}).get(feuille)
+        if note is None:
+            continue
+        montant = _n(note.get(coord))
+        attendu = _somme(balN, lo, hi)
+        if abs(montant - attendu) <= tol:
+            continue
+        c.add(code, "ETA",
+              "%s : le total de la %s (%s) ne correspond pas aux comptes %d a %d de la "
+              "balance (%s), ecart de %s. Un compte est place a un niveau que la note "
+              "ne capte pas : codifiez-le sur un sous-compte detaille depuis la page "
+              "Codification."
+              % (libelle, feuille, _fmt(montant), lo // 100, hi // 100 - 1,
+                 _fmt(attendu), _fmt(montant - attendu)),
+              MAJEUR, None, montant - attendu)
 
     for code, feuille, coord, lo, hi, absolu, libelle in NOTES:
         note = (notes or {}).get(feuille)

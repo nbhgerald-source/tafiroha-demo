@@ -4408,9 +4408,10 @@ def lancer_revision(conn, exercice_id, exo, client):
         ).fetchone()
         if existe:
             # on rafraichit le libelle et le montant, on preserve le traitement
+            # resolue remise a 0 : le constat est de nouveau d'actualite.
             conn.execute(
                 "UPDATE revision_anomalies SET libelle=?, montant=?, severite=?, "
-                "vu_le=datetime('now') WHERE id=?",
+                "vu_le=datetime('now'), resolue=0, resolue_le=NULL WHERE id=?",
                 (a["libelle"], a["montant"], a["severite"], existe["id"]),
             )
         else:
@@ -4432,8 +4433,14 @@ def lancer_revision(conn, exercice_id, exo, client):
         if r["statut"] == "traiter":
             conn.execute("DELETE FROM revision_anomalies WHERE id=?", (r["id"],))
         else:
+            # Le constat ne se reproduit plus : on garde la ligne comme trace
+            # du travail fait, mais on la marque resolue. Sans ce marqueur elle
+            # restait affichee avec son libelle et son montant d'origine, donc
+            # des chiffres perimes en face d'etats deja corriges.
             conn.execute(
-                "UPDATE revision_anomalies SET statut='corrige' WHERE id=?", (r["id"],))
+                "UPDATE revision_anomalies SET statut='corrige', resolue=1, "
+                "resolue_le=COALESCE(resolue_le, datetime('now')) WHERE id=?",
+                (r["id"],))
 
     # memoire des comptes du client
     if client:
@@ -4452,7 +4459,9 @@ def lancer_revision(conn, exercice_id, exo, client):
 
 
 NOTES_RECOUPEES = ("NOTE 3A", "NOTE 3C", "NOTE 3C BIS", "NOTE 4", "NOTE 6",
-                   "NOTE 7", "NOTE 16A", "NOTE 21", "NOTE 22")
+                   "NOTE 7", "NOTE 16A", "NOTE 21", "NOTE 22",
+                   "NOTE 23", "NOTE 24", "NOTE 25", "NOTE 26", "NOTE 27A",
+                   "NOTE 29")
 
 
 def _notes_pour_revision(balN, balN1):
@@ -4486,6 +4495,14 @@ def _revision_detail_complet(conn, exercice_id, exo, client):
         notes=_notes_pour_revision(balN, balN1),
         condenser=False,
     )
+
+
+def _col(row, nom, defaut=0):
+    """Lit une colonne qui peut ne pas exister sur une base ancienne."""
+    try:
+        return row[nom]
+    except (IndexError, KeyError):
+        return defaut
 
 
 def charger_anomalies(conn, exercice_id):
@@ -4582,13 +4599,18 @@ def view_revision(req, conn, user, exercice_id):
                 if (not f_sev or r["severite"] == f_sev)
                 and (not f_statut or r["statut"] == f_statut)]
 
+    # Les constats qui ne se reproduisent plus restent affiches comme piste
+    # d'audit, mais ne comptent pas dans les compteurs : ils fausseraient la
+    # lecture de l'etat d'avancement du dossier.
     synth = {"bloquant": 0, "majeur": 0, "justifier": 0, "informatif": 0}
     traitees = 0
-    for r in rows:
+    actives = [r for r in rows if not _col(r, "resolue")]
+    for r in actives:
         synth[r["severite"]] = synth.get(r["severite"], 0) + 1
         if r["statut"] != "traiter":
             traitees += 1
-    avancement = int(100.0 * traitees / len(rows)) if rows else 100
+    avancement = int(100.0 * traitees / len(actives)) if actives else 100
+    resolues = len(rows) - len(actives)
 
     familles = []
     for r in visibles:
@@ -4603,7 +4625,7 @@ def view_revision(req, conn, user, exercice_id):
         "revision.html", user=user, client=client, exo=exo,
         apres_import=apres_import,
         plan_comptable=plan_comptable_options(),
-        familles=familles, synthese=synth, total=len(rows),
+        familles=familles, synthese=synth, total=len(actives), resolues=resolues,
         traitees=traitees, avancement=avancement, message=message,
         bloquants_ouverts=anomalies_bloquantes(conn, exercice_id),
         f_sev=f_sev, f_statut=f_statut,
