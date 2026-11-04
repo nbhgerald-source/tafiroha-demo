@@ -356,7 +356,14 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
     put("NO_FR2A_ZZ3_1", r2.get("nb_etabl_hors_pays"), N)
     put("NO_FR2A_ZZ4_1", somm.get("annee_premier_exercice"), N)
     put("NO_FR2A_1_1",   r2.get("type_controle"))
-    put("NO_FR2C_1_1",   r2.get("type_montant_activite"))
+    # Unite de mesure de l'activite : la DGI n'accepte que les deux libelles
+    # complets de sa liste (feuille Referentiels, K3:K4). Le formulaire de
+    # l'application propose les abreviations "CA HT" / "VA" — il faut les
+    # traduire, sinon la valeur est refusee comme hors liste.
+    UNITES = {"CA HT": "Chiffre d'affaires HT (CA HT)",
+              "VA": "Valeur ajoutée (VA)"}
+    unite = str(r2.get("type_montant_activite", "") or "").strip()
+    put("NO_FR2C_1_1", UNITES.get(unite, unite))
 
     # ── FICHE R2B — activites (tableau variable) ────────────────────────────
     # Le nombre d'activites est libre ; la ligne "Divers" est rangee hors
@@ -454,23 +461,35 @@ def _get_value(computed: dict, note3: dict, ntexte: dict, onglet: str, row: int,
     - Feuilles manuelles → note_texte d'abord (texte), puis note3_manuel (numérique)
       Si la cellule n'a jamais été saisie → (None, False) → sera ignorée
     """
+    import calc_engine as ce
+
     coord = _num_to_col(col) + str(row)
 
-    if onglet == "ACTIF":
-        v = computed.get("BILAN", {}).get(coord, 0)
-        return v, False
+    def _a_une_formule(feuille, c):
+        """La cellule existe-t-elle dans le classeur d'origine ?
 
-    if onglet == "PASSIF":
-        bilan_coord = _num_to_col(col + 5) + str(row)
-        v = computed.get("BILAN", {}).get(bilan_coord, 0)
-        return v, False
+        Une feuille calculée contient aussi des cellules de SAISIE, sans
+        formule (NOTE 3B, NOTE 4B...). La macro officielle n'exporte que les
+        cellules dont le texte affiché n'est pas vide : une case de saisie
+        laissée vide ne part pas. En renvoyant 0 pour toute coordonnée d'une
+        feuille calculée, on envoyait un 0 dans des colonnes que la DGI
+        attend sous forme de liste de valeurs — d'où « la valeur ne fait pas
+        partie de celles autorisées »."""
+        return ce.SHEETS_RAW.get(feuille, {}).get(c) is not None
+
+    if onglet in ("ACTIF", "PASSIF"):
+        c = _num_to_col(col + (5 if onglet == "PASSIF" else 0)) + str(row)
+        if not _a_une_formule("BILAN", c):
+            return None, False
+        return computed.get("BILAN", {}).get(c, 0), False
 
     if onglet in computed:
-        # Feuille calculée — on inclut même les 0 (cellule avec formule)
-        v = computed[onglet].get(coord, 0)
-        return v, False
+        if _a_une_formule(onglet, coord):
+            # Cellule avec formule : le 0 est une vraie valeur, on l'exporte.
+            return computed[onglet].get(coord, 0), False
+        # Cellule de saisie sur une feuille calculée : on bascule sur les
+        # sources manuelles ci-dessous plutôt que de fabriquer un 0.
 
-    # Feuille manuelle
     if ntexte.get(onglet, {}).get(coord) not in (None, ""):
         return ntexte[onglet][coord], True
 
@@ -485,13 +504,22 @@ def _get_value(computed: dict, note3: dict, ntexte: dict, onglet: str, row: int,
 def _format_value(v, is_text: bool):
     """
     Retourne la chaîne à écrire dans <valeur>, ou None si la cellule est vide.
+
+    Pas d'apostrophe en préfixe. La fonction GetValeur du classeur officiel en
+    ajoute une (`"'" & Format(valeur, "dd/mm/yyyy")`), mais elle écrit dans une
+    CELLULE Excel : l'apostrophe y est un marqueur de saisie qui force le
+    format texte et ne fait pas partie de la valeur. SaveAsXMLData exporte donc
+    `01/01/2025`, pas `'01/01/2025`. La reprise littérale de l'apostrophe dans
+    le XML faisait rejeter par e-impôts toutes les dates (« la valeur n'est pas
+    une date valide ») et toutes les listes de codes (« la valeur ne fait pas
+    partie de celles autorisées »).
     """
     if v is None:
         return None
 
     if is_text:
         s = str(v).strip()
-        return ("'" + s) if s else None
+        return s or None
 
     if isinstance(v, (int, float)):
         if isinstance(v, bool):
@@ -509,11 +537,11 @@ def _format_value(v, is_text: bool):
         return None
     try:
         n = float(s)
-        if s.startswith("0") and len(s) > 1:   # Code "01234" → texte
-            return "'" + s
+        if s.startswith("0") and len(s) > 1:   # Code "01234" : zéro de tête à garder
+            return s
         return str(int(n)) if n == int(n) else str(round(n, 4))
     except ValueError:
-        return ("'" + s) if s else None
+        return s or None
 
 
 # ── Échappement XML ──────────────────────────────────────────────────────────
