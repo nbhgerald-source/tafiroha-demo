@@ -1116,6 +1116,26 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
         ("ETA-26", "NOTE 16A", "K25", 17000, 18000, True,
          "Dettes de location-acquisition"),
     ]
+    # ETA-16 : la NOTE 21 ventile le chiffre d'affaires sur des sous-plages
+    # etroites (70110-70120, 70210-70220, 70510-70520...), la ou le compte de
+    # resultat somme des plages larges (70100-70200, 70200-70500, 70500-70700).
+    # Un compte place a un niveau intermediaire — 70100000 par exemple — est
+    # donc capte par le compte de resultat et pas par la note : l'ecart est
+    # invisible et la note est fausse. Les produits accessoires (707) sont
+    # exclus : ils se saisissent dans le bloc detaille de la ligne 27.
+    n21 = (notes or {}).get("NOTE 21")
+    if n21:
+        note_ca = _n(n21.get("F14")) + _n(n21.get("F20")) + _n(n21.get("F26"))
+        bal_ca = abs(_somme(balN, 70100, 70700))
+        if abs(note_ca - bal_ca) > tol:
+            c.add("ETA-16", "ETA",
+                  "NOTE 21 : le chiffre d'affaires ventile (%s) ne correspond pas aux "
+                  "comptes 701 a 706 de la balance (%s), ecart de %s. Un compte de "
+                  "vente est place a un niveau que la note ne capte pas : codifiez-le "
+                  "sur un sous-compte detaille depuis la page Codification."
+                  % (_fmt(note_ca), _fmt(bal_ca), _fmt(note_ca - bal_ca)),
+                  MAJEUR, None, note_ca - bal_ca)
+
     for code, feuille, coord, lo, hi, absolu, libelle in NOTES:
         note = (notes or {}).get(feuille)
         if note is None:

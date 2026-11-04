@@ -1105,11 +1105,17 @@ NOTE21_LINES_A = [
     (25, "Ventes de travaux et services sur internet", False),
     (26, "TOTAL : VENTES DE TRAVAUX ET SERVICES VENDUS", True),
 ]
+# Production immobilisee, Subventions d'exploitation et Autres produits : le
+# classeur d'origine laisse ces trois cellules vides, a ressaisir a la main.
+# Le compte de resultat, lui, les calcule (RESULTAT lignes 20/21/22 : comptes
+# 72, 71 et 75, credit moins debit). Les laisser manuelles exposait a une
+# divergence entre la NOTE 21 et le compte de resultat, invisible et fausse.
+# Elles sont donc calculees ici avec exactement les memes bornes.
 NOTE21_LINES_B = [
     (29, "TOTAL : CHIFFRES D'AFFAIRES", True),
-    (30, "Production immobilisée", False, ("F", "G")),
-    (31, "Subventions d'exploitation", False, ("F", "G")),
-    (32, "Autres produits (1)", False, ("F", "G")),
+    (30, "Production immobilisée", False),
+    (31, "Subventions d'exploitation", False),
+    (32, "Autres produits (1)", False),
     (33, "TOTAL : AUTRES PRODUITS", True),
     (34, "TOTAL", True),
 ]
@@ -3942,6 +3948,11 @@ def compute_note21(balN, balN1, manual, note_texte):
     manual_aug = dict(raw)
     manual_aug["F27"] = f_sum
     manual_aug["G27"] = g_sum
+    # Les lignes 30 a 32 sont desormais calculees depuis la balance. Une
+    # ancienne saisie manuelle resterait prioritaire sur la formule et
+    # figerait un montant perime : on la neutralise.
+    for _c in ("F30", "G30", "F31", "G31", "F32", "G32"):
+        manual_aug.pop(_c, None)
     manual_full = dict(manual or {})
     manual_full["NOTE 21"] = manual_aug
 
@@ -4441,7 +4452,7 @@ def lancer_revision(conn, exercice_id, exo, client):
 
 
 NOTES_RECOUPEES = ("NOTE 3A", "NOTE 3C", "NOTE 3C BIS", "NOTE 4", "NOTE 6",
-                   "NOTE 7", "NOTE 16A")
+                   "NOTE 7", "NOTE 16A", "NOTE 21")
 
 
 def _notes_pour_revision(balN, balN1):
