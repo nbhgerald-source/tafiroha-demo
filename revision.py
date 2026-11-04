@@ -1136,6 +1136,24 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
                   % (_fmt(note_ca), _fmt(bal_ca), _fmt(note_ca - bal_ca)),
                   MAJEUR, None, note_ca - bal_ca)
 
+    # ETA-17 : meme logique que ETA-16, cote achats. La NOTE 22 ventile les
+    # comptes 60 sur des sous-plages etroites ; le compte de resultat somme
+    # 601-603 et 604-609 en entier. Un compte pose a un niveau intermediaire
+    # (60500000 par exemple) n'est capte par aucune ligne de la note et
+    # l'annexe sort fausse sans que rien ne le signale.
+    n22 = (notes or {}).get("NOTE 22")
+    if n22:
+        note_achats = _n(n22.get("F13")) + _n(n22.get("F18")) + _n(n22.get("F33"))
+        bal_achats = _somme(balN, 60100, 60300) + _somme(balN, 60400, 60900)
+        if abs(note_achats - bal_achats) > tol:
+            c.add("ETA-17", "ETA",
+                  "NOTE 22 : le total des achats ventiles (%s) ne correspond pas aux "
+                  "comptes 601 a 608 de la balance (%s), ecart de %s. Un compte d'achat "
+                  "est place a un niveau que la note ne capte pas : codifiez-le sur un "
+                  "sous-compte detaille depuis la page Codification."
+                  % (_fmt(note_achats), _fmt(bal_achats), _fmt(note_achats - bal_achats)),
+                  MAJEUR, None, note_achats - bal_achats)
+
     for code, feuille, coord, lo, hi, absolu, libelle in NOTES:
         note = (notes or {}).get(feuille)
         if note is None:

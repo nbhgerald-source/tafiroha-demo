@@ -4452,7 +4452,7 @@ def lancer_revision(conn, exercice_id, exo, client):
 
 
 NOTES_RECOUPEES = ("NOTE 3A", "NOTE 3C", "NOTE 3C BIS", "NOTE 4", "NOTE 6",
-                   "NOTE 7", "NOTE 16A", "NOTE 21")
+                   "NOTE 7", "NOTE 16A", "NOTE 21", "NOTE 22")
 
 
 def _notes_pour_revision(balN, balN1):
