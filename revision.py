@@ -576,8 +576,12 @@ def controles_att(c, balN):
          "Compte transitoire d'ajustement non solde : une operation n'a pas ete affectee"),
         ("ATT-02", 58500, 58600, BLOQUANT,
          "Compte de virements internes non solde"),
-        ("ATT-03", 18500, 18700, MAJEUR,
-         "Compte de liaison non solde"),
+        # 185 a 188 : la borne s'arretait a 18700 et laissait hors controle les
+        # comptes de liaison "produits" (187) et "societes en participation"
+        # (188), qui doivent eux aussi etre soldes a la cloture.
+        ("ATT-03", 18500, 18900, MAJEUR,
+         "Compte de liaison non solde : les comptes 185 a 188 doivent etre "
+         "soldes a la cloture, leur solde ne figure dans aucun poste du bilan"),
         ("ATT-04", 47600, 47700, JUSTIFIER,
          "Charges constatees d'avance : verifier le calcul du prorata"),
         ("ATT-05", 47700, 47800, JUSTIFIER,
@@ -1153,6 +1157,27 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
                   "sous-compte detaille depuis la page Codification."
                   % (_fmt(note_achats), _fmt(bal_achats), _fmt(note_achats - bal_achats)),
                   MAJEUR, None, note_achats - bal_achats)
+
+    # ETA-18 : la colonne "AMORT. ET DEPREC." du bilan est alimentee par une
+    # mosaique de sous-plages (28100-28120, 28181-28182, 28182-28190...). Elle
+    # laisse des trous : un amortissement pose sur un compte racine (2818,
+    # 2918, 2939...) n'est deduit nulle part et l'actif ressort surevalue,
+    # sans desequilibre apparent puisque le passif n'est pas concerne. On
+    # rapproche donc le total de la colonne de la somme reelle des comptes
+    # d'amortissement et de depreciation de la balance.
+    amort_bilan = v(bilan, "G39")
+    amort_balance = -(_somme(balN, 28000, 30000) + _somme(balN, 39000, 40000)
+                      + _somme(balN, 49000, 50000) + _somme(balN, 59000, 60000))
+    if (amort_bilan or amort_balance) and abs(amort_bilan - amort_balance) > tol:
+        c.add("ETA-18", "ETA",
+              "Bilan : les amortissements et depreciations deduits de l'actif (%s) ne "
+              "correspondent pas aux comptes 28, 29, 39, 49 et 59 de la balance (%s), "
+              "ecart de %s. Un compte d'amortissement ou de depreciation est pose a un "
+              "niveau qu'aucune ligne du bilan ne capte : son montant n'est pas deduit "
+              "et l'actif net est surevalue d'autant. Codifiez-le sur un sous-compte "
+              "detaille depuis la page Codification."
+              % (_fmt(amort_bilan), _fmt(amort_balance), _fmt(amort_bilan - amort_balance)),
+              BLOQUANT, None, amort_bilan - amort_balance)
 
     for code, feuille, coord, lo, hi, absolu, libelle in NOTES:
         note = (notes or {}).get(feuille)
