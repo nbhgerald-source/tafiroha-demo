@@ -499,22 +499,27 @@ def handle_xlsx_to_csv(req):
 
 
 def mappings_exercice(conn, exercice_id):
-    """Codification du client proprietaire de l'exercice.
+    """Codification applicable a cet exercice : regle du client, puis exception.
 
-    Resolue ici plutot qu'a chaque appelant : load_balance est le point de
-    passage unique de la balance vers le moteur de calcul, la codification
-    s'applique donc partout sans toucher aux vues."""
+    La regle generale est enregistree par client et vaut pour tous ses
+    exercices. Une exception peut la surcharger sur un exercice precis : elle
+    prime, et elle seule. Resolue ici plutot qu'a chaque appelant, parce que
+    load_balance est le point de passage unique de la balance vers le moteur
+    de calcul — la codification s'applique donc partout sans toucher aux vues."""
     try:
         r = conn.execute(
             "SELECT client_id FROM exercices WHERE id=?", (exercice_id,)
         ).fetchone()
         if not r:
             return {}
-        rows = conn.execute(
+        out = {int(x["cle_source"]): int(x["cle_cible"]) for x in conn.execute(
             "SELECT cle_source, cle_cible FROM client_compte_mapping WHERE client_id=?",
-            (r["client_id"],),
-        ).fetchall()
-        return {int(x["cle_source"]): int(x["cle_cible"]) for x in rows}
+            (r["client_id"],)).fetchall()}
+        for x in conn.execute(
+                "SELECT cle_source, cle_cible FROM exercice_compte_mapping "
+                "WHERE exercice_id=?", (exercice_id,)).fetchall():
+            out[int(x["cle_source"])] = int(x["cle_cible"])
+        return out
     except Exception:
         return {}
 
@@ -4348,21 +4353,33 @@ def _revision_overrides(conn, client_id):
         return {}
 
 
-def _revision_mappings(conn, client_id):
-    """Comptes de regularisation saisis par l'utilisateur, conserves d'un
-    exercice a l'autre."""
+def _revision_mappings(conn, client_id, exercice_id=None):
+    """Codification vue par les controles et la page de revue.
+
+    Meme resolution que mappings_exercice : regle du client, surchargee par
+    l'exception propre a l'exercice quand on en vise un. Sans exercice_id on
+    ne renvoie que la regle generale."""
     try:
-        rows = conn.execute(
+        out = {int(r["cle_source"]): int(r["cle_cible"]) for r in conn.execute(
             "SELECT cle_source, cle_cible FROM client_compte_mapping WHERE client_id=?",
-            (client_id,),
-        ).fetchall()
-        return {int(r["cle_source"]): int(r["cle_cible"]) for r in rows}
+            (client_id,)).fetchall()}
+        if exercice_id is not None:
+            for r in conn.execute(
+                    "SELECT cle_source, cle_cible FROM exercice_compte_mapping "
+                    "WHERE exercice_id=?", (exercice_id,)).fetchall():
+                out[int(r["cle_source"])] = int(r["cle_cible"])
+        return out
     except Exception:
         return {}
 
 
-def _enregistrer_mapping(conn, client_id, compte_source, compte_cible, user_id):
-    """Rattache un compte non reconnu a un compte du plan. Retourne un message."""
+def _enregistrer_mapping(conn, client_id, compte_source, compte_cible, user_id,
+                        exercice_id=None):
+    """Rattache un compte non reconnu a un compte du plan. Retourne un message.
+
+    exercice_id renseigne : le rattachement ne vaut que pour cet exercice, en
+    exception a la regle du client. Sinon il devient la regle generale et
+    s'applique a tous les exercices, y compris anterieurs."""
     src = "".join(ch for ch in str(compte_source or "") if ch.isdigit())
     cib = "".join(ch for ch in str(compte_cible or "") if ch.isdigit())
     if not src or not cib:
@@ -4373,16 +4390,30 @@ def _enregistrer_mapping(conn, client_id, compte_source, compte_cible, user_id):
     if niveau == 0:
         return ("Le compte de régularisation %s n'existe pas non plus au plan "
                 "comptable : choisissez un compte reconnu." % compte_cible)
-    conn.execute(
-        "INSERT INTO client_compte_mapping "
-        "(client_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
-        "ON CONFLICT(client_id, cle_source) DO UPDATE SET "
-        "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
-        (client_id, cle_src, cle_cib, str(compte_source), user_id),
-    )
-    conn.commit()
-    msg = ("Compte %s rattaché à %s (sens %s). Le rattachement s'appliquera aussi "
-           "aux exercices suivants." % (compte_source, compte_cible, sens))
+    if exercice_id is not None:
+        conn.execute(
+            "INSERT INTO exercice_compte_mapping "
+            "(exercice_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(exercice_id, cle_source) DO UPDATE SET "
+            "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
+            (exercice_id, cle_src, cle_cib, str(compte_source), user_id),
+        )
+        conn.commit()
+        msg = ("Compte %s rattaché à %s (sens %s) pour CET EXERCICE seulement. "
+               "Les autres exercices conservent la règle générale."
+               % (compte_source, compte_cible, sens))
+    else:
+        conn.execute(
+            "INSERT INTO client_compte_mapping "
+            "(client_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(client_id, cle_source) DO UPDATE SET "
+            "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
+            (client_id, cle_src, cle_cib, str(compte_source), user_id),
+        )
+        conn.commit()
+        msg = ("Compte %s rattaché à %s (sens %s). Le rattachement vaut pour TOUS les "
+               "exercices de ce client, y compris les précédents."
+               % (compte_source, compte_cible, sens))
     if str(cle_src)[0] != str(cle_cib)[0]:
         msg += (" ATTENTION : ce rattachement fait passer le compte de la classe %s "
                 "à la classe %s. Le montant bascule entre le bilan et le compte de "
@@ -4412,7 +4443,7 @@ def lancer_revision(conn, exercice_id, exo, client):
         sheets_raw=ce.SHEETS_RAW,
         params=_revision_params(conn, client["id"] if client else None),
         overrides=_revision_overrides(conn, client["id"] if client else None),
-        mappings=_revision_mappings(conn, client["id"] if client else None),
+        mappings=_revision_mappings(conn, client["id"] if client else None, exercice_id),
         notes=_notes_pour_revision(balN, balN1),
     )
 
@@ -4510,7 +4541,7 @@ def _revision_detail_complet(conn, exercice_id, exo, client):
         client=client, exo=exo, sheets_raw=ce.SHEETS_RAW,
         params=_revision_params(conn, client["id"] if client else None),
         overrides=_revision_overrides(conn, client["id"] if client else None),
-        mappings=_revision_mappings(conn, client["id"] if client else None),
+        mappings=_revision_mappings(conn, client["id"] if client else None, exercice_id),
         notes=_notes_pour_revision(balN, balN1),
         condenser=False,
     )
@@ -4560,6 +4591,7 @@ def view_revision(req, conn, user, exercice_id):
                 req.form.get("mapping_source"),
                 req.form.get("mapping_cible"),
                 user["id"],
+                exercice_id if req.form.get("mapping_exercice") else None,
             )
             lancer_revision(conn, exercice_id, exo, client)
         elif req.form.get("anomalie_id"):
@@ -4810,7 +4842,9 @@ def _codifier_en_lot(conn, client_id, form, user_id, exercice_id=None):
     """Enregistre en une passe tous les rattachements saisis dans le tableau.
 
     Un seul enregistrement pour toute la page : sans cela, codifier 80 comptes
-    demande 80 allers-retours."""
+    demande 80 allers-retours. La case "cet exercice seulement" range les
+    rattachements en exception plutot que dans la regle du client."""
+    exception = bool(form.get("codif_exercice")) and exercice_id is not None
     faits, ignores, refuses, classes, retires = 0, 0, [], [], 0
     for k, v in form.items():
         if not k.startswith("cible_"):
@@ -4841,12 +4875,20 @@ def _codifier_en_lot(conn, client_id, form, user_id, exercice_id=None):
         if niveau == 0:
             refuses.append("%s→%s" % (source, cible))
             continue
-        conn.execute(
-            "INSERT INTO client_compte_mapping "
-            "(client_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
-            "ON CONFLICT(client_id, cle_source) DO UPDATE SET "
-            "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
-            (client_id, src_cle, cib_cle, source, user_id))
+        if exception:
+            conn.execute(
+                "INSERT INTO exercice_compte_mapping "
+                "(exercice_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(exercice_id, cle_source) DO UPDATE SET "
+                "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
+                (exercice_id, src_cle, cib_cle, source, user_id))
+        else:
+            conn.execute(
+                "INSERT INTO client_compte_mapping "
+                "(client_id, cle_source, cle_cible, compte_source, cree_par) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(client_id, cle_source) DO UPDATE SET "
+                "cle_cible=excluded.cle_cible, cree_par=excluded.cree_par, cree_le=datetime('now')",
+                (client_id, src_cle, cib_cle, source, user_id))
         if str(src_cle)[0] != str(cib_cle)[0]:
             classes.append("%s→%s" % (source, cible))
         faits += 1
@@ -5074,7 +5116,7 @@ def _export_balance_codifiee(conn, exercice_id, exo, client):
     from openpyxl.utils import get_column_letter
 
     plan = _plan_libelles()
-    mappings = _revision_mappings(conn, client["id"]) if client else {}
+    mappings = _revision_mappings(conn, client["id"], exercice_id) if client else {}
     pointages = {str(r["compte"]): r for r in conn.execute(
         "SELECT compte, statut, commentaire FROM revision_pointage WHERE exercice_id=?",
         (exercice_id,)).fetchall()}
@@ -5254,11 +5296,25 @@ def view_pointage(req, conn, user, exercice_id):
         elif req.form.get("retirer_rattachement"):
             try:
                 cle = int(req.form.get("retirer_rattachement"))
-                conn.execute(
-                    "DELETE FROM client_compte_mapping WHERE client_id=? AND cle_source=?",
-                    (client["id"], cle))
-                conn.commit()
-                message = "Rattachement du compte %d supprimé." % cle
+                # On retire d'abord l'exception : si elle existe, c'est elle
+                # que l'utilisateur voit et veut annuler ; la regle generale
+                # reprend alors ses droits.
+                exc = conn.execute(
+                    "SELECT 1 FROM exercice_compte_mapping WHERE exercice_id=? AND cle_source=?",
+                    (exercice_id, cle)).fetchone()
+                if exc:
+                    conn.execute(
+                        "DELETE FROM exercice_compte_mapping WHERE exercice_id=? AND cle_source=?",
+                        (exercice_id, cle))
+                    conn.commit()
+                    message = ("Exception du compte %d retirée pour cet exercice. "
+                               "La règle générale du client s'applique de nouveau." % cle)
+                else:
+                    conn.execute(
+                        "DELETE FROM client_compte_mapping WHERE client_id=? AND cle_source=?",
+                        (client["id"], cle))
+                    conn.commit()
+                    message = "Rattachement du compte %d supprimé." % cle
             except (TypeError, ValueError):
                 message = "Rattachement introuvable."
         elif req.form.get("purger_inutilises"):
@@ -5274,7 +5330,8 @@ def view_pointage(req, conn, user, exercice_id):
         elif req.form.get("codifier"):
             message = _enregistrer_mapping(
                 conn, client["id"], req.form.get("codifier"),
-                req.form.get("cible"), user["id"])
+                req.form.get("cible"), user["id"],
+                exercice_id if req.form.get("codif_exercice") else None)
         elif req.form.get("compte"):
             compte = req.form.get("compte")
             statut = req.form.get("statut", "revu")
@@ -5333,7 +5390,7 @@ def view_pointage(req, conn, user, exercice_id):
             anomalies[cle] = r["severite"]
 
     plan = _plan_libelles()
-    mappings = _revision_mappings(conn, client["id"]) if client else {}
+    mappings = _revision_mappings(conn, client["id"], exercice_id) if client else {}
 
     # Les comptes presents uniquement en N-1 doivent aussi pouvoir etre
     # codifies : ils alimentent la colonne comparative des etats, et un compte
@@ -5413,22 +5470,33 @@ def view_pointage(req, conn, user, exercice_id):
     # ici, parfois a tort — on les affiche pour qu'ils soient verifiables.
     comptes_balance = {revision._key4(r.get("table_origine", r.get("table", 0)))
                        for r in balN}
+    # Deux origines : la regle generale du client, et l'exception propre a cet
+    # exercice qui la surcharge. On affiche les deux, en marquant l'exception
+    # et en signalant la regle qu'elle remplace.
     rattachements = []
-    for r in conn.execute(
+    exceptions = {int(r["cle_source"]): r for r in conn.execute(
         "SELECT cle_source, cle_cible, compte_source, motif, cree_le "
-        "FROM client_compte_mapping WHERE client_id=? ORDER BY cle_source",
-        (client["id"],) if client else (0,),
-    ).fetchall():
-        src = int(r["cle_source"])
+        "FROM exercice_compte_mapping WHERE exercice_id=?", (exercice_id,)).fetchall()}
+    regles = {int(r["cle_source"]): r for r in conn.execute(
+        "SELECT cle_source, cle_cible, compte_source, motif, cree_le "
+        "FROM client_compte_mapping WHERE client_id=?",
+        (client["id"],) if client else (0,)).fetchall()}
+    for src in sorted(set(regles) | set(exceptions)):
+        exc = exceptions.get(src)
+        r = exc or regles[src]
+        cible = int(r["cle_cible"])
         rattachements.append({
             "source": src,
-            "cible": int(r["cle_cible"]),
+            "cible": cible,
             "compte_source": r["compte_source"] or "",
-            "libelle": plan.get(str(int(r["cle_cible"])), ""),
+            "libelle": plan.get(str(cible), ""),
             "motif": r["motif"] or "",
             "le": str(r["cree_le"] or "")[:10],
             "utilise": src in comptes_balance,
-            "change_classe": str(src)[0] != str(int(r["cle_cible"]))[0],
+            "change_classe": str(src)[0] != str(cible)[0],
+            "exception": exc is not None,
+            "regle_remplacee": (int(regles[src]["cle_cible"])
+                                if exc is not None and src in regles else None),
         })
     inutilises = sum(1 for x in rattachements if not x["utilise"])
     # Une balance peut porter plusieurs lignes sous le meme numero de compte

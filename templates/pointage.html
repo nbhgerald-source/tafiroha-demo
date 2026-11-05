@@ -147,9 +147,11 @@
   </p>
   {% endif %}
   <p class="muted" style="font-size:13px;line-height:1.5">
-    Ces rattachements valent pour <strong>tous les exercices de ce client</strong>.
-    Ils modifient les montants du bilan, du compte de résultat et du TFT. Un
-    rattachement hérité d'une autre balance peut s'appliquer ici à tort.
+    Par défaut un rattachement vaut pour <strong>tous les exercices de ce client</strong>,
+    y compris les précédents : le modifier change donc aussi des exercices déjà déposés.
+    Cochez <em>cet exercice seulement</em> à l'enregistrement pour en faire une exception,
+    qui ne touche que l'exercice en cours.
+    Ils modifient les montants du bilan, du compte de résultat et du TFT.
     {% if inutilises %}
     <br><strong style="color:#922b21">{{ inutilises }} d'entre eux portent sur des
     comptes absents de cette balance.</strong>
@@ -177,7 +179,15 @@
     <tr {% if r['change_classe'] %}style="background:#fdecea"{% elif not r['utilise'] %}style="background:#f4f6f6"{% endif %}>
       <td class="mono">{{ r['compte_source'] or r['source'] }}</td>
       <td class="mono">{{ r['cible'] }}</td>
-      <td>{{ r['libelle'] }}</td>
+      <td>{{ r['libelle'] }}
+        {% if r['exception'] %}
+        <br><span class="tag" style="background:#eaf2f8;color:#1a5276;border:1px solid #85c1e9">
+          Exception, cet exercice seulement</span>
+        {% if r['regle_remplacee'] %}
+        <span class="sub">remplace la règle générale {{ r['regle_remplacee'] }}</span>
+        {% endif %}
+        {% endif %}
+      </td>
       <td class="sub">{{ r['motif'] or 'Saisie manuelle' }}<br>{{ r['le'] }}</td>
       <td>
         {% if r['change_classe'] %}
@@ -262,6 +272,11 @@
       Le compte de rattachement proposé est pré-rempli. Corrigez uniquement les
       lignes qui vous semblent inexactes, puis enregistrez une seule fois.
       <strong>Vider un champ supprime le rattachement</strong> de ce compte.
+      <br><label style="display:inline-block;margin-top:6px">
+        <input type="checkbox" name="codif_exercice" value="1" style="width:auto">
+        Appliquer à <strong>cet exercice seulement</strong> — sinon la codification vaut
+        pour tous les exercices du client, y compris les précédents.
+      </label>
     </span>
     <button class="btn" type="submit" style="background:#1a5276;white-space:nowrap">
       Enregistrer la page

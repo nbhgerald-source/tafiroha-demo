@@ -268,6 +268,30 @@ def _migrate_anomalies_resolues(conn):
     conn.commit()
 
 
+def _migrate_mapping_exercice(conn):
+    """Exception de codification valable pour un seul exercice.
+
+    Le rattachement d'un compte est enregistre par client et vaut pour tous
+    ses exercices : c'est voulu, il evite de ressaisir chaque annee. Mais il
+    s'applique aussi retroactivement, de sorte que recodifier un compte en
+    travaillant sur N modifie les etats de N-1, meme deja deposes. Cette table
+    permet de deroger a la regle generale sur un exercice precis, sans toucher
+    aux autres."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS exercice_compte_mapping (
+            exercice_id INTEGER NOT NULL REFERENCES exercices(id),
+            cle_source INTEGER NOT NULL,
+            cle_cible INTEGER NOT NULL,
+            compte_source TEXT,
+            motif TEXT,
+            cree_par INTEGER REFERENCES users(id),
+            cree_le TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (exercice_id, cle_source)
+        );
+    """)
+    conn.commit()
+
+
 def _migrate_user_clients(conn):
     """Rattachement d'un utilisateur a PLUSIEURS clients.
 
@@ -322,6 +346,7 @@ def init_db():
     _migrate_default_accounts(conn)
     _migrate_revision(conn)
     _migrate_anomalies_resolues(conn)
+    _migrate_mapping_exercice(conn)
     _migrate_user_clients(conn)
     _migrate_pointage(conn)
     _repair_dangling_users_old_refs(conn)
