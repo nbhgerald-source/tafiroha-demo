@@ -107,7 +107,13 @@
 </form>
 {% endmacro %}
 
-{% macro note13_table(note13, anchor=None) %}
+{% macro note13_table(note13, listes_note13, anchor=None) %}
+<datalist id="dl-pays-residence">
+  {% for v in listes_note13.get('pays_residence', []) %}<option value="{{ v }}">{% endfor %}
+</datalist>
+<datalist id="dl-nature-actions">
+  {% for v in listes_note13.get('nature_actions', []) %}<option value="{{ v }}">{% endfor %}
+</datalist>
 <form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
   <input type="hidden" name="note3_sheet" value="NOTE 13">
   <p>
@@ -119,14 +125,20 @@
   <table>
     <tr>
       <th>Nom et prénoms ou raison sociale</th>
-      {% for col, label, manual in note13.cols %}<th class="num">{{ label }}</th>{% endfor %}
+      {% for col, label, typ, liste in note13.cols %}<th class="{{ 'num' if typ == 'nombre' }}">{{ label }}</th>{% endfor %}
       <th class="num">Montant total</th>
     </tr>
     {% for r in note13.detail_rows %}
     <tr>
       <td><input type="text" name="texte_assoc_nom_{{ r.idx }}" value="{{ r.designation }}" placeholder="Nom et prénoms ou raison sociale"></td>
-      {% for col, label, manual in note13.cols %}
+      {% for col, label, typ, liste in note13.cols %}
+      {% if typ == 'texte' %}
+      <td><input type="text" size="14" name="texte_assoc_{{ col }}_{{ r.idx }}"
+                 value="{{ r.vals[col] }}" autocomplete="off"
+                 {% if liste %}list="dl-{{ 'pays-residence' if liste == 'pays_residence' else 'nature-actions' }}"{% endif %}></td>
+      {% else %}
       <td class="num"><input type="text" size="8" name="cell_ASSOC_{{ col }}_{{ r.idx }}" value="{{ r.vals[col]|fmt }}"></td>
+      {% endif %}
       {% endfor %}
       <td class="num">{{ r.vals.K|fmt }}</td>
     </tr>
@@ -1468,7 +1480,7 @@
 
 <div class="card landscape" id="note-13">
   <h2>NOTE 13 — Capital</h2>
-  {{ note13_table(note13, anchor="note-13") }}
+  {{ note13_table(note13, listes_note13, anchor="note-13") }}
   {{ note_comment_block("NOTE 13") }}
 </div>
 

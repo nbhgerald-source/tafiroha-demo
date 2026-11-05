@@ -548,12 +548,23 @@ def load_note3_manual(conn, exercice_id):
 
 
 def save_note3_manual(conn, exercice_id, sheet, cell_values):
+    """Une case laissee vide est effacee, pas enregistree a zero.
+
+    Enregistrer 0 pour toute case vide remplissait les notes de zeros au
+    premier enregistrement — la case vide du modele devenait "0" a l'ecran et
+    partait telle quelle dans le XML. Vider une case redevient aussi un moyen
+    de corriger une saisie : la ligne est supprimee."""
     for coord, raw in cell_values.items():
-        val = ce._num(raw)
+        if str(raw).strip() == "" and not str(coord).startswith("_N_"):
+            conn.execute(
+                "DELETE FROM note3_manuel WHERE exercice_id=? AND sheet=? AND coord=?",
+                (exercice_id, sheet, coord),
+            )
+            continue
         conn.execute(
             "INSERT INTO note3_manuel (exercice_id, sheet, coord, valeur) VALUES (?,?,?,?) "
             "ON CONFLICT(exercice_id, sheet, coord) DO UPDATE SET valeur=excluded.valeur",
-            (exercice_id, sheet, coord, val),
+            (exercice_id, sheet, coord, ce._num(raw)),
         )
     conn.commit()
 
@@ -1140,6 +1151,7 @@ NOTE22_LINES = [
     (20, "Matières combustibles", False),
     (21, "Produits d'entretien", False),
     (22, "Fournitures d'atelier, d'usine et de magasin", False),
+    (23, "Eau", False),
     (24, "Electricité", False),
     (25, "Autres énergies", False),
     (26, "Fourniture d'entretien", False),
@@ -1325,6 +1337,15 @@ NOTE12_TRANSFERTS_LINES = [
     (18, "Transferts de charges d'exploitation", False),
     (20, "Transferts de charges financières", False),
 ]
+
+# Listes imposees par la DGI pour la NOTE 13 (feuille "Referentiels" du
+# classeur officiel) : 244 pays de residence et deux natures de titres. Une
+# valeur hors liste fait rejeter le depot sur e-impots.
+try:
+    with open(os.path.join(BASE_DIR, "listes_note13.json"), encoding="utf-8") as _fh:
+        LISTES_NOTE13 = json.load(_fh)
+except Exception:
+    LISTES_NOTE13 = {"pays_residence": [], "nature_actions": []}
 
 NOTE13_COLS = [
     ("E", "N° compte contribuable", True),
@@ -3275,14 +3296,21 @@ def compute_note13(manual, note_texte):
     texte = (note_texte or {}).get("NOTE 13", {})
     valeur_nominale = ce._num(raw.get("L8", ""))
 
+    # Cinq de ces sept colonnes sont du TEXTE : numero de compte contribuable
+    # (alphanumerique), nationalite, autres nationalites, pays de residence et
+    # nature des actions. Elles passaient par note3_manuel, qui convertit tout
+    # en nombre : "INDIENNE" devenait 0 et la saisie etait perdue. Elles sont
+    # desormais rangees dans note_texte, comme le nom de l'associe. Seuls le
+    # nombre de titres et les cessions restent numeriques.
+    #   type : "texte" ou "nombre" ; liste : cle du referentiel DGI, si impose
     cols = [
-        ("E", "N° compte contribuable", True),
-        ("F", "Nationalité", True),
-        ("G", "Autres nationalités à préciser", True),
-        ("H", "Pays de résidence", True),
-        ("I", "Nature des actions/parts", True),
-        ("J", "Nombre", True),
-        ("L", "Cessions/remb. en cours d'exercice", True),
+        ("E", "N° compte contribuable", "texte", None),
+        ("F", "Nationalité", "texte", None),
+        ("G", "Autres nationalités à préciser", "texte", None),
+        ("H", "Pays de résidence", "texte", "pays_residence"),
+        ("I", "Nature des actions/parts", "texte", "nature_actions"),
+        ("J", "Nombre", "nombre", None),
+        ("L", "Cessions/remb. en cours d'exercice", "nombre", None),
     ]
 
     n = int(ce._num(raw.get("_N_ASSOCIES", 1))) or 1
@@ -3291,8 +3319,11 @@ def compute_note13(manual, note_texte):
     k_sum = 0.0
     for i in range(n):
         vals = {}
-        for col, _label, _manual in cols:
-            vals[col] = raw.get("ASSOC_%s_%d" % (col, i), "")
+        for col, _label, typ, _liste in cols:
+            if typ == "texte":
+                vals[col] = texte.get("assoc_%s_%d" % (col, i), "")
+            else:
+                vals[col] = raw.get("ASSOC_%s_%d" % (col, i), "")
         vals["K"] = valeur_nominale * ce._num(vals["J"])
         k_sum += vals["K"]
         designation = texte.get("assoc_nom_%d" % i, "")
@@ -6057,7 +6088,7 @@ def view_exercice(req, conn, user, exercice_id):
         note1=note1,
         note32=note32, note33=note33, note16c=note16c, note30=note30,
         note27b_rows=note27b_rows, note27b_cols=NOTE27B_COLS, note27b_side=note27b_side,
-        note13=note13,
+        note13=note13, listes_note13=LISTES_NOTE13,
         note21=note21,
         note_texte=note_texte, notes_texte_defs=NOTES_TEXTE_DEFS,
         commentaire_defs=COMMENTAIRE_DEFS,
