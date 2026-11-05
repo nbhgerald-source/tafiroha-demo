@@ -1347,22 +1347,10 @@ try:
 except Exception:
     LISTES_NOTE13 = {"pays_residence": [], "nature_actions": []}
 
-NOTE13_COLS = [
-    ("E", "N° compte contribuable", True),
-    ("F", "Nationalité", True),
-    ("G", "Autres nationalités", True),
-    ("H", "Pays de résidence", True),
-    ("I", "Nature des actions/parts", True),
-    ("J", "Nombre", True),
-    ("K", "Montant total", False),
-    ("L", "Cessions/remb. en cours d'exercice", True),
-]
-NOTE13_LINES = [
-    (8, "Valeur nominale des actions ou parts (colonne L)", False),
-    (10, "Actionnaire / associé (détail)", False),
-    (11, "Apporteurs, capital non appelé", False),
-    (12, "TOTAL", True),
-]
+# NOTE13_COLS / NOTE13_LINES : constantes devenues inutilisees. La structure
+# reelle de la note est definie dans compute_note13, qui distingue colonnes de
+# texte et colonnes numeriques — distinction que ces deux listes ignoraient.
+# Elles sont retirees pour qu'une relecture ne s'y fie pas par erreur.
 
 NOTE15B_COLS = [
     ("G", "Année N", True),
