@@ -310,7 +310,7 @@
       <td>{{ r.label }}</td>
       {% for col, label, manual in cols %}
       <td class="num">
-        {% if (manual or col in (r.manual_cols if r.manual_cols is defined else [])) and not r.total %}
+        {% if (manual and not r.total) or col in (r.manual_cols if r.manual_cols is defined else []) %}
         <input type="text" size="10" name="cell_{{ col }}{{ r.row }}" value="{{ r.vals[col]|pct if '%' in label else r.vals[col]|fmt }}">
         {% else %}
         {{ r.vals[col]|pct if '%' in label else r.vals[col]|fmt }}

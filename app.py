@@ -1519,7 +1519,10 @@ NOTE33_COLS = [
 
 NOTE37_COLS = [
     ("H", "Montant", True),
-    ("D", "Taux d'imposition (ligne 36 uniquement)", True),
+    # Le taux ne se saisit que sur la derniere ligne : declare non saisissable
+    # ici, il est ouvert ligne par ligne (voir NOTE37_LINES). Sans cela une
+    # case de saisie du taux apparaissait sur les vingt lignes de la note.
+    ("D", "Taux d'imposition (en pourcentage)", False),
 ]
 NOTE37_LINES = [
     (9, "RESULTAT NET COMPTABLE DE L'EXERCICE", True),
@@ -1547,7 +1550,7 @@ NOTE37_LINES = [
     (33, "AMORTISSEMENTS REGULIEREMENT DIFFERES", False),
     (34, "AMORTISSEMENTS DE L'EXERCICE A DIFFERER", False),
     (35, "RESULTAT FISCAL DE L'EXERCICE", True),
-    (36, "IMPOTS SUR LE RESULTAT (taux x résultat fiscal, colonne D)", True),
+    (36, "IMPOTS SUR LE RESULTAT (taux x résultat fiscal, colonne D)", True, ("D",)),
 ]
 
 # Chaque entree : (sheet, lines, cols, titre). Le meme nom de feuille peut
@@ -2999,7 +3002,7 @@ def compute_notes_dgi_ins_recap(comp_charges, comp_tva, comp_tva2, suppl1, suppl
     return {"rows": rows}
 
 
-def compute_notes_lot_d(balN, balN1, manual):
+def compute_notes_lot_d(balN, balN1, manual, note_texte=None):
     """NOTE 12, 15B, 16B/16B BIS, 37 :
     contrairement a leur etiquette de feuilles "a saisie manuelle", ces
     feuilles contiennent de vraies formules (SUM, IFERROR, INDIRECT/ADDRESS
@@ -3007,6 +3010,24 @@ def compute_notes_lot_d(balN, balN1, manual):
     portent pas sur la balance (pas de SUMIFS), mais compute_workbook a
     quand meme besoin de balN/balN1 pour son interface standard."""
     sheets = list(dict.fromkeys(name for name, _, _, _ in NOTES_LOT_D))
+    # NOTE 37 D36 : le classeur y lit le taux d'imposition sur la feuille
+    # Sommaire (=Sommaire!M43). Cette feuille n'existe pas dans le moteur, le
+    # taux est saisi sur le Sommaire de l'application : on l'injecte comme
+    # valeur manuelle pour que H36 = H35 * D36 puisse se calculer.
+    manual = dict(manual or {})
+    taux = ((note_texte or {}).get("SOMMAIRE", {}) or {}).get("taux_bic_bnc", "")
+    if str(taux).strip():
+        # Le taux est manipule en pourcentage (25), pas en taux (0,25) : c'est
+        # ce que le collaborateur saisit sur le Sommaire, et le seul format que
+        # l'affichage entier de l'application restitue sans l'arrondir a zero.
+        # La formule H36 divise donc par 100, la ou le classeur multipliait un
+        # taux reel affiche au format pourcentage par Excel.
+        t = ce._num(str(taux).replace("%", "").replace(",", "."))
+        if 0 < t < 1:
+            t = t * 100.0
+        n37 = dict(manual.get("NOTE 37", {}))
+        n37.setdefault("D36", t)
+        manual["NOTE 37"] = n37
     caches = ce.compute_workbook(sheets, balN or [], balN1 or [], manual=manual, row_range=(6, 60))
     groups = {}
     order = []
@@ -6046,7 +6067,7 @@ def view_exercice(req, conn, user, exercice_id):
     notes_lot_a = compute_notes_lot_a(balN, balN1, note3_manual)
     notes_lot_b = compute_notes_lot_b(balN, balN1, note3_manual)
     notes_lot_c = compute_notes_lot_c(balN, balN1, note3_manual)
-    tables_lot_d = compute_notes_lot_d(balN, balN1, note3_manual)
+    tables_lot_d = compute_notes_lot_d(balN, balN1, note3_manual, note_texte)
     note31 = compute_note31(balN, balN1, note3_manual, resultat)
     note34 = compute_note34(bilan, resultat, tft, balN, balN1, tftn, tftn1)
     note1 = compute_note1(note3_manual)
