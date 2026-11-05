@@ -1255,8 +1255,13 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
         if abs(brut) >= 0.5 or abs(attendu) >= 0.5:
             if abs(brut - attendu) > tol:
                 c.add("ETA-24", "ETA",
-                      "NOTE 7 (Clients) : total net de %s contre %s dans la balance"
-                      % (_fmt(brut), _fmt(attendu)), MAJEUR, None, brut - attendu)
+                      "NOTE 7 : le total des clients de la note (%s) ne correspond pas aux "
+                      "comptes 410 a 419 de la balance (%s), ecart de %s. La note ventile "
+                      "sur des sous-comptes (4111, 4191...) ; un compte tenu a un niveau "
+                      "plus agrege, 419 par exemple, n'est capte par aucune de ses lignes. "
+                      "Codifiez-le sur un sous-compte detaille depuis la page Codification."
+                      % (_fmt(brut), _fmt(attendu), _fmt(brut - attendu)),
+                      MAJEUR, None, brut - attendu)
 
 
 # ---------------------------------------------------------------------------

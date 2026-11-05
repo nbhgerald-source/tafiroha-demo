@@ -292,6 +292,20 @@ def _migrate_mapping_exercice(conn):
     conn.commit()
 
 
+def _migrate_exercice_depose(conn):
+    """Date de depot de la liasse.
+
+    Un exercice depose ne doit plus bouger : la codification en vigueur au
+    moment du depot y est figee, et les modifications ulterieures de la regle
+    du client ne l'atteignent plus."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(exercices)")}
+    if "depose_le" not in cols:
+        conn.execute("ALTER TABLE exercices ADD COLUMN depose_le TEXT")
+    if "depose_par" not in cols:
+        conn.execute("ALTER TABLE exercices ADD COLUMN depose_par INTEGER REFERENCES users(id)")
+    conn.commit()
+
+
 def _migrate_user_clients(conn):
     """Rattachement d'un utilisateur a PLUSIEURS clients.
 
@@ -347,6 +361,7 @@ def init_db():
     _migrate_revision(conn)
     _migrate_anomalies_resolues(conn)
     _migrate_mapping_exercice(conn)
+    _migrate_exercice_depose(conn)
     _migrate_user_clients(conn)
     _migrate_pointage(conn)
     _repair_dangling_users_old_refs(conn)

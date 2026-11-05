@@ -4373,6 +4373,72 @@ def _revision_mappings(conn, client_id, exercice_id=None):
         return {}
 
 
+MOTIF_GEL = "gel au dépôt"
+
+
+def exercice_depose(conn, exercice_id):
+    """Date de depot de l'exercice, ou None s'il est encore ouvert."""
+    try:
+        r = conn.execute("SELECT depose_le FROM exercices WHERE id=?",
+                         (exercice_id,)).fetchone()
+        return (r["depose_le"] or None) if r else None
+    except Exception:
+        return None
+
+
+def deposer_exercice(conn, exercice_id, user_id):
+    """Fige la codification de l'exercice et le marque depose.
+
+    La codification resolue au moment du depot est materialisee en exceptions
+    explicites. L'exercice devient ainsi insensible aux modifications
+    ulterieures de la regle du client : une liasse transmise a la DGI ne doit
+    plus changer. Le motif permet de distinguer ces exceptions techniques de
+    celles que le collaborateur a saisies lui-meme, et donc de les retirer
+    proprement a la reouverture."""
+    if exercice_depose(conn, exercice_id):
+        return "Cet exercice est déjà marqué comme déposé."
+    fige = 0
+    for cle, cible in mappings_exercice(conn, exercice_id).items():
+        cur = conn.execute(
+            "SELECT 1 FROM exercice_compte_mapping WHERE exercice_id=? AND cle_source=?",
+            (exercice_id, cle)).fetchone()
+        if cur:
+            continue
+        conn.execute(
+            "INSERT INTO exercice_compte_mapping "
+            "(exercice_id, cle_source, cle_cible, motif, cree_par) VALUES (?,?,?,?,?)",
+            (exercice_id, cle, cible, MOTIF_GEL, user_id))
+        fige += 1
+    conn.execute("UPDATE exercices SET depose_le=datetime('now'), depose_par=? WHERE id=?",
+                 (user_id, exercice_id))
+    conn.commit()
+    return ("Exercice marqué comme déposé. La codification est figée : %d rattachement%s "
+            "recopié%s sur l'exercice, les modifications ultérieures de la règle du client "
+            "ne l'atteindront plus." % (fige, "s" if fige > 1 else "", "s" if fige > 1 else ""))
+
+
+def rouvrir_exercice(conn, exercice_id):
+    """Leve le depot et retire les exceptions posees par le gel.
+
+    Les exceptions saisies a la main par le collaborateur sont conservees :
+    seules celles creees automatiquement au depot sont effacees, pour que
+    l'exercice retrouve exactement la regle du client."""
+    if not exercice_depose(conn, exercice_id):
+        return "Cet exercice n'est pas marqué comme déposé."
+    n = conn.execute(
+        "SELECT COUNT(*) c FROM exercice_compte_mapping WHERE exercice_id=? AND motif=?",
+        (exercice_id, MOTIF_GEL)).fetchone()["c"]
+    conn.execute("DELETE FROM exercice_compte_mapping WHERE exercice_id=? AND motif=?",
+                 (exercice_id, MOTIF_GEL))
+    conn.execute("UPDATE exercices SET depose_le=NULL, depose_par=NULL WHERE id=?",
+                 (exercice_id,))
+    conn.commit()
+    return ("Exercice rouvert. %d rattachement%s figé%s au dépôt %s été retiré%s ; "
+            "la règle du client s'applique de nouveau."
+            % (n, "s" if n > 1 else "", "s" if n > 1 else "",
+               "ont" if n > 1 else "a", "s" if n > 1 else ""))
+
+
 def _enregistrer_mapping(conn, client_id, compte_source, compte_cible, user_id,
                         exercice_id=None):
     """Rattache un compte non reconnu a un compte du plan. Retourne un message.
@@ -5286,7 +5352,23 @@ def view_pointage(req, conn, user, exercice_id):
         return Response("Accès refusé", status="403 Forbidden")
 
     message = None
-    if req.method == "POST" and req.environ.get("CONTENT_TYPE", "").startswith("multipart/form-data"):
+    depose = exercice_depose(conn, exercice_id)
+    # Un exercice depose est en lecture seule sur tout ce qui modifie les
+    # montants. La revue (pointage, commentaires) reste ouverte : elle ne
+    # change aucun etat, elle documente le travail.
+    FIGEES = ("fichier_codif", "codif_lot", "codifier", "valider_propositions",
+              "retirer_rattachement", "purger_inutilises", "reinitialiser_codif",
+              "purger_lignes")
+    if req.method == "POST" and depose and any(req.form.get(k) for k in FIGEES):
+        message = ("Exercice déposé le %s : la codification est figée. Rouvrez "
+                   "l'exercice pour la modifier." % str(depose)[:10])
+    elif req.method == "POST" and req.form.get("deposer"):
+        message = deposer_exercice(conn, exercice_id, user["id"])
+        depose = exercice_depose(conn, exercice_id)
+    elif req.method == "POST" and req.form.get("rouvrir"):
+        message = rouvrir_exercice(conn, exercice_id)
+        depose = exercice_depose(conn, exercice_id)
+    elif req.method == "POST" and req.environ.get("CONTENT_TYPE", "").startswith("multipart/form-data"):
         contenu = _extract_multipart_file(req, "fichier_codif")
         message = (_importer_codification(conn, client["id"], contenu, user["id"])
                    if contenu else "Aucun fichier reçu.")
@@ -5554,7 +5636,7 @@ def view_pointage(req, conn, user, exercice_id):
         comptes_uniques=comptes_uniques, nb_n1_seules=nb_n1_seules,
         plan_comptable=plan_comptable_options(),
         nb_anomalies=sum(1 for l in lignes if l["anomalie"]),
-        lignes_sans_compte=lignes_sans_compte,
+        lignes_sans_compte=lignes_sans_compte, depose=depose,
     ))
 
 

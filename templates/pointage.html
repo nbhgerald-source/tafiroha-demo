@@ -88,6 +88,25 @@
   </div>
 
   <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e8e8;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="muted" style="font-size:12px">Dépôt :</span>
+    {% if depose %}
+    <span class="tag" style="background:#e8f8f5;color:#0e6655;border:1px solid #7dcea0">
+      Déposé le {{ depose[:10] }} — codification figée</span>
+    <form method="post" style="display:inline"
+          onsubmit="return confirm('Rouvrir cet exercice ? La codification figée au dépôt sera retirée et la règle du client s\'appliquera de nouveau.');">
+      <input type="hidden" name="rouvrir" value="1">
+      <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:#e67e22">Rouvrir l'exercice</button>
+    </form>
+    {% else %}
+    <form method="post" style="display:inline"
+          onsubmit="return confirm('Marquer cet exercice comme déposé ? La codification en vigueur sera figée : les modifications ultérieures de la règle du client ne l\'atteindront plus.');">
+      <input type="hidden" name="deposer" value="1">
+      <button class="btn" type="submit" style="font-size:12px;padding:4px 10px;background:#0e6655">Marquer comme déposé</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e8e8;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <span class="muted" style="font-size:12px">Nettoyage :</span>
     <form method="post" style="display:inline"
           onsubmit="return confirm('Retirer de la balance les lignes sans numéro de compte (en-têtes, sous-totaux) ?');">
