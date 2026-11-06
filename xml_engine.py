@@ -467,39 +467,46 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
 # total et ce qui le suit.
 #
 #   (feuille, prefixe valeurs, prefixe libelle, colonne du libelle,
-#    premiere ligne, lignes imposees, lignes reservees par le modele)
+#    premiere ligne, lignes imposees, lignes reservees par le modele,
+#    colonnes rangees en numerique)
+#
+# Le dernier element ne sert que lorsque les valeurs numeriques et les textes
+# partagent le meme prefixe : la NOTE 13 range ses nombres sous "ASSOC_J_0" et
+# ses textes sous "assoc_F_0". Ses colonnes E a I ont ete du numerique dans
+# une version anterieure ; d'anciennes saisies peuvent subsister en base et ne
+# doivent plus ressortir (un "584" fantome en N0 de compte contribuable).
 TABLEAUX_DYNAMIQUES = (
     # FICHE R1 : domiciliations bancaires (zone ZW du classeur). Aucun code
     # DGI ne leur correspond : elles figurent dans le classeur, pas dans le
     # fichier XML, qui ne prevoit pas de champ pour les comptes bancaires.
-    ("FICHE R1", "BANQUE", "banque_nom",   "J", 52,   None,         9),
+    ("FICHE R1", "BANQUE", "banque_nom",   "J", 52,   None,         9, None),
     # NOTE 21 : produits accessoires a detailler par nature (tableau NOTE21B).
-    ("NOTE 21",  "PA",     "pa_designation", "A", 28, None,         1),
-    ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None,         52),
+    ("NOTE 21",  "PA",     "pa_designation", "A", 28, None,         1, None),
+    ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None,         52, None),
     # Les trois rubriques de l'etat annexe occupent des lignes fixes et non
     # contigues dans le classeur (D18/F18, D19/F19 puis D23/F23) : la DGI les
     # connait sous SUPPL1A1 pour les deux premieres et SUPPL1A2 pour la
     # troisieme. D'ou les lignes imposees plutot qu'une ligne de depart.
-    ("SUPPL1",   "AX",     "desig_ax",     "A", None, (18, 19, 23), 0),
-    ("SUPPL2",   "D",      "desig",        "A", 9,    None,         1),
+    ("SUPPL1",   "AX",     "desig_ax",     "A", None, (18, 19, 23), 0, None),
+    ("SUPPL2",   "D",      "desig",        "A", 9,    None,         1, None),
     # SUPPL4 : colonne A = numero de compte, B = designation, F = date de
     # mise en service — exactement les colonnes du fichier d'inventaire
     # importe. La designation n'est donc pas en colonne A ici.
-    ("SUPPL4",   "D",      "desig",        "B", 10,   None,         1),
+    ("SUPPL4",   "D",      "desig",        "B", 10,   None,         1, None),
     # NOTE 13 : la ligne 11 porte les "Apporteurs, capital non appele" et la
     # 12 le total : une seule ligne de detail est reservee.
-    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None,         1),
-    ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None,         1),
-    ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None,         1),
+    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None,         1, ("J", "L")),
+    ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None,         1, None),
+    ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None,         1, None),
     # NOTE 30 et NOTE 3E : tableaux a lignes ajoutables eux aussi, comme le
     # confirment les boutons AjoutNOTE30B / NOTE30C / NOTE3E3 de la macro
     # officielle. Les lignes doivent etre rangees par feuille et par ligne
     # croissante : le decalage des tableaux suivants en depend.
-    ("NOTE 30",  "CH",     "desig_ch",     "A", 10,   None,         1),
-    ("NOTE 30",  "PR",     "desig_pr",     "A", 20,   None,         1),
-    ("NOTE 3E",  "REEVAL", "reeval_poste", "A", 11,   None,         1),
-    ("NOTE 32",  "D",      "desig",        "A", 11,   None,         2),
-    ("NOTE 33",  "D",      "desig",        "A", 12,   None,         2),
+    ("NOTE 30",  "CH",     "desig_ch",     "A", 10,   None,         1, None),
+    ("NOTE 30",  "PR",     "desig_pr",     "A", 20,   None,         1, None),
+    ("NOTE 3E",  "REEVAL", "reeval_poste", "A", 11,   None,         1, None),
+    ("NOTE 32",  "D",      "desig",        "A", 11,   None,         2, None),
+    ("NOTE 33",  "D",      "desig",        "A", 12,   None,         2, None),
 )
 
 # Colonnes saisies a part, en plus des colonnes de valeurs du tableau.
@@ -513,17 +520,30 @@ COLONNES_ANNEXES = {
 _COORD = re.compile(r"^([A-Z]{1,3})([0-9]{1,5})$")
 
 
-def _nb_lignes_saisies(note3, ntexte, feuille, prefixe, prefixes_libelle):
+def _colonne_retenue(colonne, cols_nombre, numerique):
+    """La colonne est-elle rangee dans le bon stockage ?
+
+    Sans ce filtre, une saisie laissee par une version anterieure dans la
+    mauvaise table ressortirait a l'export alors que l'ecran l'ignore."""
+    if not cols_nombre:
+        return True
+    dans = colonne.upper() in tuple(c.upper() for c in cols_nombre)
+    return dans if numerique else not dans
+
+
+def _nb_lignes_saisies(note3, ntexte, feuille, prefixe, prefixes_libelle,
+                       cols_nombre=None):
     """Nombre de lignes de detail reellement saisies sur un tableau."""
     maxi = -1
-    motif = re.compile(r"^%s_[A-Za-z]{1,2}_(\d+)$" % re.escape(prefixe), re.I)
-    for source in ((note3 or {}).get(feuille) or {}, (ntexte or {}).get(feuille) or {}):
+    motif = re.compile(r"^%s_([A-Za-z]{1,2})_(\d+)$" % re.escape(prefixe), re.I)
+    for numerique, source in ((True, (note3 or {}).get(feuille) or {}),
+                              (False, (ntexte or {}).get(feuille) or {})):
         for cle, valeur in source.items():
             if valeur in (None, ""):
                 continue
             m = motif.match(str(cle))
-            if m:
-                maxi = max(maxi, int(m.group(1)))
+            if m and _colonne_retenue(m.group(1), cols_nombre, numerique):
+                maxi = max(maxi, int(m.group(2)))
     txt = (ntexte or {}).get(feuille) or {}
     for pref in prefixes_libelle:
         mot = re.compile(r"^%s_(\d+)$" % re.escape(pref))
@@ -549,17 +569,19 @@ def plan_tableaux(note3, ntexte):
         a_inserer       : nombre de lignes a inserer dans la feuille.
     """
     plan, decalage = [], {}
-    for feuille, prefixe, pref_lib, col_lib, premiere, imposees, reserve in TABLEAUX_DYNAMIQUES:
+    for (feuille, prefixe, pref_lib, col_lib, premiere, imposees, reserve,
+         cols_nombre) in TABLEAUX_DYNAMIQUES:
         annexes = COLONNES_ANNEXES.get((feuille, prefixe), ())
         n = _nb_lignes_saisies(
             note3, ntexte, feuille, prefixe,
-            [pref_lib] + [p for p, _ in annexes])
+            [pref_lib] + [p for p, _ in annexes], cols_nombre)
         d = decalage.get(feuille, 0)
         a_inserer = max(0, n - reserve) if (premiere and reserve) else 0
         plan.append({
             "feuille": feuille, "prefixe": prefixe,
             "prefixe_libelle": pref_lib, "colonne_libelle": col_lib,
             "annexes": annexes, "premiere_modele": premiere,
+            "colonnes_nombre": cols_nombre,
             "base": (premiere + d) if premiere else None,
             "imposees": tuple(x + d for x in imposees) if imposees else None,
             "lignes": n, "a_inserer": a_inserer,
@@ -790,10 +812,13 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
         # Casse du prefixe ignoree : la NOTE 13 range ses colonnes texte sous
         # "assoc_E_0" et ses colonnes numeriques sous "ASSOC_J_0".
         motif = re.compile(r"^%s_([A-Za-z]{1,2})_(\d+)$" % re.escape(prefixe), re.I)
-        for source, cible in ((raw, raw), (txt, txt)):
+        cols_nombre = entree.get("colonnes_nombre")
+        for numerique, source, cible in ((True, raw, raw), (False, txt, txt)):
             for cle, valeur in list(source.items()):
                 m = motif.match(str(cle))
                 if not m or valeur in (None, ""):
+                    continue
+                if not _colonne_retenue(m.group(1), cols_nombre, numerique):
                     continue
                 ligne = _ligne_dynamique(premiere, imposees, int(m.group(2)))
                 if ligne:
