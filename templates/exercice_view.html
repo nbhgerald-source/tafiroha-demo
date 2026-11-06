@@ -1906,7 +1906,7 @@
       <tr>
         <td><input type="text" size="8" name="texte_compte_{{ r.idx }}" value="{{ r.compte }}"></td>
         <td><input type="text" name="texte_desig_{{ r.idx }}" value="{{ r.designation }}"></td>
-        <td class="num"><input type="text" size="6" name="cell_D_E_{{ r.idx }}" value="{{ r.vals.E|fmt }}"></td>
+        <td class="num"><input type="text" size="6" name="cell_D_E_{{ r.idx }}" value="{{ r.vals.E|taux }}"></td>
         <td><input type="text" size="10" name="texte_date_{{ r.idx }}" value="{{ r.date_service }}"></td>
         <td class="num"><input type="text" size="10" name="cell_D_G_{{ r.idx }}" value="{{ r.vals.G|fmt }}"></td>
         <td class="num"><input type="text" size="10" name="cell_D_H_{{ r.idx }}" value="{{ r.vals.H|fmt }}"></td>

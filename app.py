@@ -48,6 +48,23 @@ def fmt(v):
     return "{:,.0f}".format(v).replace(",", " ")
 
 
+def fmt_taux(v):
+    """Taux en pourcentage, decimales conservees.
+
+    Le format entier de l'application ramenait 33,33 a "33" : le taux etait
+    tronque a l'affichage puis reenregistre tronque au premier
+    enregistrement de la page."""
+    if v is None or v == "":
+        return ""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return v
+    if f == int(f):
+        return str(int(f))
+    return ("%.2f" % f).rstrip("0").rstrip(".").replace(".", ",")
+
+
 def slug(v):
     s = re.sub(r"[^a-z0-9]+", "-", str(v).lower()).strip("-")
     return s or "section"
@@ -92,6 +109,7 @@ def is_landscape(sheet):
 jinja_env.filters["fmt"] = fmt
 jinja_env.filters["slug"] = slug
 jinja_env.filters["pct"] = fmt_pct
+jinja_env.filters["taux"] = fmt_taux
 jinja_env.filters["landscape"] = is_landscape
 
 
@@ -6759,11 +6777,28 @@ def _parse_suppl4_xlsx(file_bytes: bytes):
             return v.strftime("%d/%m/%Y")
         return str(v).strip()
 
+    def _taux(cell):
+        """Taux d'amortissement, ramene en pourcentage (20 et non 0,2).
+
+        La colonne E du modele d'import comme celle du classeur officiel sont
+        au format "0%" : Excel y enregistre 0,2 pour une saisie de 20. Lue
+        telle quelle, la valeur etait affichee "0" par l'application, qui
+        arrondit a l'entier — le taux etait purement et simplement perdu. On
+        detecte le format pourcentage, et a defaut toute valeur strictement
+        inferieure a 1, qui ne peut pas etre un taux d'amortissement reel."""
+        v = _num(cell.value)
+        if v == "" or v == 0:
+            return v
+        if "%" in (cell.number_format or "") or 0 < v < 1:
+            v = v * 100
+        return int(v) if float(v) == int(v) else round(v, 4)
+
     rows = []
-    for row in ws.iter_rows(min_row=4, values_only=True):
+    for cells in ws.iter_rows(min_row=4):
+        row = [c.value for c in cells]
         compte    = _txt(row[0])
         desig     = _txt(row[1])
-        taux      = _num(row[4])
+        taux      = _taux(cells[4])
         date_svc  = _date(row[5])
         valeur    = _num(row[6])
         amort_ant = _num(row[7])
