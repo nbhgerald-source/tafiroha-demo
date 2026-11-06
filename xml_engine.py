@@ -491,6 +491,13 @@ TABLEAUX_DYNAMIQUES = (
     ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None,         1),
     ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None,         1),
     ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None,         1),
+    # NOTE 30 et NOTE 3E : tableaux a lignes ajoutables eux aussi, comme le
+    # confirment les boutons AjoutNOTE30B / NOTE30C / NOTE3E3 de la macro
+    # officielle. Les lignes doivent etre rangees par feuille et par ligne
+    # croissante : le decalage des tableaux suivants en depend.
+    ("NOTE 30",  "CH",     "desig_ch",     "A", 10,   None,         1),
+    ("NOTE 30",  "PR",     "desig_pr",     "A", 20,   None,         1),
+    ("NOTE 3E",  "REEVAL", "reeval_poste", "A", 11,   None,         1),
     ("NOTE 32",  "D",      "desig",        "A", 11,   None,         2),
     ("NOTE 33",  "D",      "desig",        "A", 12,   None,         2),
 )
@@ -509,7 +516,7 @@ _COORD = re.compile(r"^([A-Z]{1,3})([0-9]{1,5})$")
 def _nb_lignes_saisies(note3, ntexte, feuille, prefixe, prefixes_libelle):
     """Nombre de lignes de detail reellement saisies sur un tableau."""
     maxi = -1
-    motif = re.compile(r"^%s_[A-Z]{1,2}_(\d+)$" % re.escape(prefixe))
+    motif = re.compile(r"^%s_[A-Za-z]{1,2}_(\d+)$" % re.escape(prefixe), re.I)
     for source in ((note3 or {}).get(feuille) or {}, (ntexte or {}).get(feuille) or {}):
         for cle, valeur in source.items():
             if valeur in (None, ""):
@@ -719,7 +726,9 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
         txt = nt.get(feuille, {})
         if not raw and not txt:
             continue
-        motif = re.compile(r"^%s_([A-Z]{1,2})_(\d+)$" % re.escape(prefixe))
+        # Casse du prefixe ignoree : la NOTE 13 range ses colonnes texte sous
+        # "assoc_E_0" et ses colonnes numeriques sous "ASSOC_J_0".
+        motif = re.compile(r"^%s_([A-Za-z]{1,2})_(\d+)$" % re.escape(prefixe), re.I)
         for source, cible in ((raw, raw), (txt, txt)):
             for cle, valeur in list(source.items()):
                 m = motif.match(str(cle))
@@ -727,7 +736,7 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
                     continue
                 ligne = _ligne_dynamique(premiere, imposees, int(m.group(2)))
                 if ligne:
-                    cible["%s%d" % (m.group(1), ligne)] = valeur
+                    cible["%s%d" % (m.group(1).upper(), ligne)] = valeur
         paires = [(pref_lib, col_lib)]
         paires.extend(entree["annexes"])
         for pref, col in paires:

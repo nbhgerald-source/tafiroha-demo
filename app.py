@@ -6642,6 +6642,46 @@ def _coord_origine(coord, insertions):
     return "%s%d" % (colonne, ligne - decalage) if decalage else coord
 
 
+# Reference de cellule dans une formule : colonne (eventuellement figee par
+# un $), puis ligne. On ecarte ce qui suit un "!" (reference a une autre
+# feuille, qui ne bouge pas) et ce qui est suivi d'une parenthese (nom de
+# fonction comme LOG10(...)).
+_REF_FORMULE = re.compile(r"(?<![A-Za-z0-9_$!])(\$?)([A-Z]{1,3})(\$?)([0-9]{1,5})(?![0-9(])")
+
+
+def _decaler_formules(ws, depart, n):
+    """Decale de n lignes les references des formules situees a partir de
+    depart, comme le fait Excel lors d'une insertion de lignes.
+
+    openpyxl insere les lignes sans toucher aux formules : le sous-total
+    d'une note continuerait de sommer les anciennes lignes et la colonne de
+    variation renverrait a la ligne precedente."""
+    def _reecrire(formule):
+        morceaux = formule.split('"')
+        for i in range(0, len(morceaux), 2):      # hors chaines de caracteres
+            def _sub(m):
+                ligne = int(m.group(4))
+                if ligne < depart:
+                    return m.group(0)
+                return "%s%s%s%d" % (m.group(1), m.group(2), m.group(3), ligne + n)
+            morceaux[i] = _REF_FORMULE.sub(_sub, morceaux[i])
+        return '"'.join(morceaux)
+
+    for ligne in ws.iter_rows():
+        for cel in ligne:
+            v = cel.value
+            texte = getattr(v, "text", v)
+            if not (isinstance(texte, str) and texte.startswith("=")):
+                continue
+            nouveau = _reecrire(texte)
+            if nouveau == texte:
+                continue
+            if hasattr(v, "text"):
+                v.text = nouveau
+            else:
+                cel.value = nouveau
+
+
 def _formule_decalee(formule, ligne_source, ligne_cible, colonne):
     """Recopie une formule d'une ligne a une autre, references ajustees."""
     if ligne_cible == ligne_source:
@@ -6692,12 +6732,18 @@ def _etendre_tableaux(wb, plan):
         hauteur = ws.row_dimensions[base].height
 
         ws.insert_rows(depart, n)
+        _decaler_formules(ws, depart, n)
 
         # openpyxl ne deplace pas les cellules fusionnees lors d'une
         # insertion : sans cette reprise, la fusion du total resterait sur la
         # premiere ligne inseree et en bloquerait l'ecriture.
         from openpyxl.utils import get_column_letter
         from openpyxl.worksheet.cell_range import CellRange
+        avant = {}
+        for ligne in ws.iter_rows():
+            for cel in ligne:
+                if cel.value is not None and cel.__class__.__name__ != "MergedCell":
+                    avant[(cel.row, cel.column)] = cel.value
         for ref in anciennes:
             try:
                 ws.unmerge_cells(ref)
@@ -6715,11 +6761,21 @@ def _etendre_tableaux(wb, plan):
             for c1, c2 in fusions_modele:
                 nouvelles.append("%s%d:%s%d" % (get_column_letter(c1), r,
                                                 get_column_letter(c2), r))
+        # openpyxl vide certaines cellules en defaisant une fusion devenue
+        # obsolete apres l'insertion : on remet ce qui a ete perdu.
+        for (lg, cl), valeur in avant.items():
+            cel = ws.cell(row=lg, column=cl)
+            if cel.value is None and cel.__class__.__name__ != "MergedCell":
+                cel.value = valeur
         for ref in nouvelles:
             try:
                 ws.merge_cells(ref)
             except Exception:
                 pass
+        for (lg, cl), valeur in avant.items():
+            cel = ws.cell(row=lg, column=cl)
+            if cel.value is None and cel.__class__.__name__ != "MergedCell":
+                cel.value = valeur
 
         # Les lignes inserees sont nues : on leur rend le format de la
         # premiere ligne de detail (bordures, alignements, formats de nombre).
@@ -7008,6 +7064,13 @@ def view_export_xlsx(req, conn, user, exercice_id):
         ws = wb[sheet_name]
         decal = insertions.get(sheet_name)
         for coord, value in cells.items():
+            # Une cellule que le moteur ne sait pas evaluer (formule
+            # INDIRECT/ADDRESS auto-ajustable, non extraite du classeur)
+            # renvoie une valeur vide : on laisse alors la formule du modele
+            # en place plutot que de l'effacer. C'est le cas du total general
+            # de la NOTE 3E.
+            if value is None or value == "":
+                continue
             _set_cell_safe(ws, _coord_decalee(coord, decal), value)
 
     # ── 2. Écrire les notes et fiches qui ne sont pas calculées ─────────────
