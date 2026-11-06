@@ -6420,10 +6420,120 @@ EXPORT_TEMPLATE_PATH = os.path.join(STATIC_DIR, "export_template.xlsx")
 # Elles sont les seules a etre retirees du fichier exporte ; toutes les
 # autres, calculees ou saisies, sont conservees.
 EXPORT_FEUILLES_TECHNIQUES = (
-    "Referentiels", "Export XML", "tableaux", "champs fixes",
-    "champs variables", "export", "TABLE DE CONVERSION", "Table TFT",
-    "Code", "parametrage", "CODE ACTIVITE", "Plan comptable",
+    "Export XML", "tableaux", "champs fixes", "champs variables", "export",
 )
+
+# Feuilles sources du classeur : elles portent les tableaux Excel BalanceN,
+# BalanceN1, TFTN et TFTN1 sur lesquels s'appuient pres de 16 000 formules du
+# modele (COMP-CHARGES, Contrôle Mouvement, TBFT, FICHE R4...). Elles sont
+# remplies avec la balance du client, apres effacement des donnees de
+# demonstration livrees avec le modele.
+#   (feuille, tableau, ligne d'en-tete, 1re colonne de donnees,
+#    nombre de colonnes de donnees, colonne "Table" codifiee, colonnes a formule)
+EXPORT_TABLES_SOURCE = (
+    ("TABLE DE CONVERSION", "BalanceN",   8,  1, 8, 9,    (10, 11, 12)),
+    ("TABLE DE CONVERSION", "BalanceN1",  8, 14, 8, 22,   (23, 24, 25)),
+    ("Table TFT",           "TFTN",      13,  1, 6, None, (7, 8)),
+    ("Table TFT",           "TFTN1",     13, 10, 6, None, (16, 17)),
+)
+
+
+# Fonctions definies par la macro du classeur d'origine (.xlsm). Un fichier
+# .xlsx ne les connait pas : la formule afficherait #NOM?. Elles ne servent
+# qu'au controle de licence du modele, sans objet dans un export.
+_MACROS_CLASSEUR = re.compile(r"\b(creerLicence|GetValeur|SaveAsXMLData)\s*\(", re.I)
+
+
+def _neutraliser_macros(wb):
+    """Vide les formules qui appellent une macro du classeur d'origine."""
+    n = 0
+    for nom in wb.sheetnames:
+        for ligne in wb[nom].iter_rows():
+            for cel in ligne:
+                texte = getattr(cel.value, "text", cel.value)
+                if isinstance(texte, str) and _MACROS_CLASSEUR.search(texte):
+                    cel.value = None
+                    n += 1
+    return n
+
+
+def _lignes_source(conn, exercice_id, table, periode):
+    """Lignes brutes d'une balance, dans l'ordre des colonnes du classeur."""
+    rows = conn.execute(
+        "SELECT * FROM %s WHERE exercice_id=? AND periode=? ORDER BY compte" % table,
+        (exercice_id, periode),
+    ).fetchall()
+    mappings = mappings_exercice(conn, exercice_id)
+    out = []
+    for r in rows:
+        out.append((
+            [r["compte"], r["designation"],
+             ce._num(r["be_debit"]) or None, ce._num(r["be_credit"]) or None,
+             ce._num(r["mvt_debit"]) or None, ce._num(r["mvt_credit"]) or None,
+             ce._num(r["bs_debit"]) or None, ce._num(r["bs_credit"]) or None],
+            ce._table_codifiee(r["compte"], mappings),
+        ))
+    return out
+
+
+def _remplir_tables_source(wb, conn, exercice_id):
+    """Recopie la balance du client dans les tableaux sources du classeur.
+
+    Sans cela, les formules du modele travaillent sur la balance de
+    demonstration livree avec le fichier, ou ne trouvent plus leur tableau du
+    tout si la feuille a ete supprimee."""
+    from openpyxl.utils import get_column_letter
+
+    donnees = {
+        "BalanceN":  _lignes_source(conn, exercice_id, "balance_lignes", "N"),
+        "BalanceN1": _lignes_source(conn, exercice_id, "balance_lignes", "N1"),
+        "TFTN":      _lignes_source(conn, exercice_id, "tft_detail_lignes", "N"),
+        "TFTN1":     _lignes_source(conn, exercice_id, "tft_detail_lignes", "N1"),
+    }
+
+    for feuille, nom, entete, col0, nb_data, col_table, cols_f in EXPORT_TABLES_SOURCE:
+        if feuille not in wb.sheetnames:
+            continue
+        ws = wb[feuille]
+        tbl = ws.tables.get(nom) if hasattr(ws.tables, "get") else None
+        lignes = donnees.get(nom) or []
+
+        # Modeles de formules, pris sur la premiere ligne de donnees du modele.
+        modeles = {}
+        for c in cols_f:
+            v = ws.cell(row=entete + 1, column=c).value
+            modeles[c] = getattr(v, "text", v)
+
+        derniere = entete + 1
+        if tbl is not None and ":" in str(tbl.ref):
+            try:
+                derniere = int("".join(ch for ch in tbl.ref.split(":")[1] if ch.isdigit()))
+            except ValueError:
+                pass
+        derniere = max(derniere, entete + len(lignes))
+
+        colonnes = list(range(col0, col0 + nb_data)) + list(cols_f)
+        if col_table:
+            colonnes.append(col_table)
+        for r in range(entete + 1, derniere + 1):
+            for c in colonnes:
+                ws.cell(row=r, column=c).value = None
+
+        for i, (valeurs, code_table) in enumerate(lignes):
+            r = entete + 1 + i
+            for j, v in enumerate(valeurs):
+                ws.cell(row=r, column=col0 + j).value = v
+            if col_table:
+                ws.cell(row=r, column=col_table).value = code_table
+            for c in cols_f:
+                if modeles.get(c):
+                    ws.cell(row=r, column=c).value = modeles[c]
+
+        if tbl is not None:
+            fin = entete + max(len(lignes), 1)
+            derniere_col = max(colonnes)
+            tbl.ref = "%s%d:%s%d" % (get_column_letter(col0), entete,
+                                     get_column_letter(derniere_col), fin)
 
 # Correspondance entre les codes de champ de la DGI et les cellules du
 # classeur, extraite des feuilles "tableaux", "champs fixes" et "champs
@@ -6516,6 +6626,18 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
             continue
         if _ecrire_cellule(wb[feuille], coord, valeur):
             n += 1
+
+    # Codes statistiques de la FICHE R2 : le classeur va les chercher dans ses
+    # propres listes a partir de la feuille Sommaire, que l'application ne
+    # remplit pas (elle tient ces choix dans sa propre page Sommaire). Tant
+    # qu'ils ne sont pas renseignes, la formule du modele afficherait #N/A :
+    # on vide la case, l'application etant seule source de ces codes.
+    for code in ("NO_FR2A_ZX_1", "NO_FR2A_ZY_1", "NO_FR2A_ZZ1_1"):
+        if code in (fixes or {}):
+            continue
+        cible = (carte.get("champs") or {}).get(code)
+        if cible and cible[0] not in calculees and cible[0] in wb.sheetnames:
+            _ecrire_cellule(wb[cible[0]], cible[1], None)
 
     for (code, ligne), (valeur, _texte) in (variables or {}).items():
         cible = (carte.get("colonnes") or {}).get(code)
@@ -6685,6 +6807,15 @@ def view_export_xlsx(req, conn, user, exercice_id):
         wb, client, exo, note3_manual, note_texte, set(all_sheets.keys())
     )
 
+    # ── 2bis. Alimenter les tableaux sources (BalanceN, BalanceN1, TFT) ─────
+    # Près de 16 000 formules du modèle s'appuient dessus : COMP-CHARGES,
+    # Contrôle Mouvement, TBFT, FICHE R4, NOTES DGI-INS. Sans cette recopie,
+    # elles travailleraient sur la balance de démonstration du modèle.
+    try:
+        _remplir_tables_source(wb, conn, exercice_id)
+    except Exception:
+        pass
+
     # ── 3. Ne retirer que les feuilles techniques du modèle ─────────────────
     for sheet_name in list(wb.sheetnames):
         if sheet_name in EXPORT_FEUILLES_TECHNIQUES:
@@ -6693,6 +6824,9 @@ def view_export_xlsx(req, conn, user, exercice_id):
     # ── 4. Remplir les en-têtes avec les informations du client ─────────────
     for sheet_name in list(wb.sheetnames):
         _fill_sheet_header(wb[sheet_name], client, exo)
+
+    # ── 5. Retirer les formules qui appellent une macro du modèle ───────────
+    _neutraliser_macros(wb)
 
     buf = io.BytesIO()
     wb.save(buf)
