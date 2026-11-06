@@ -486,7 +486,9 @@ TABLEAUX_DYNAMIQUES = (
     # mise en service — exactement les colonnes du fichier d'inventaire
     # importe. La designation n'est donc pas en colonne A ici.
     ("SUPPL4",   "D",      "desig",        "B", 10,   None,         1),
-    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None,         2),
+    # NOTE 13 : la ligne 11 porte les "Apporteurs, capital non appele" et la
+    # 12 le total : une seule ligne de detail est reservee.
+    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None,         1),
     ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None,         1),
     ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None,         1),
     ("NOTE 32",  "D",      "desig",        "A", 11,   None,         2),
@@ -499,6 +501,9 @@ COLONNES_ANNEXES = {
     ("SUPPL4", "D"):  (("compte", "A"), ("date", "F")),  # compte et mise en service
     ("FICHE R1", "BANQUE"): (("banque_compte", "Q"),),   # numero de compte
 }
+
+
+_COORD = re.compile(r"^([A-Z]{1,3})([0-9]{1,5})$")
 
 
 def _nb_lignes_saisies(note3, ntexte, feuille, prefixe, prefixes_libelle):
@@ -598,6 +603,21 @@ def saisies_pour_moteur(note3, feuilles=None):
     return base
 
 
+def decalages_lignes(plan):
+    """Lignes inserees par feuille : {feuille: [(ligne de depart, nombre)]}."""
+    d = {}
+    for e in plan or ():
+        if e.get("a_inserer") and e.get("base"):
+            depart = e["base"] + (e["lignes"] - e["a_inserer"])
+            d.setdefault(e["feuille"], []).append((depart, e["a_inserer"]))
+    return d
+
+
+def ligne_decalee(ligne, insertions):
+    """Position d'une ligne du modele apres insertion."""
+    return int(ligne) + sum(n for dep, n in (insertions or ()) if int(ligne) >= dep)
+
+
 def _ligne_dynamique(premiere, imposees, rang):
     """Ligne du classeur correspondant au rang d'une ligne de detail."""
     if imposees:
@@ -674,7 +694,21 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
         if t:
             n3.setdefault("NOTE 37", {})["D36"] = t
 
-    for entree in (plan if plan is not None else plan_tableaux(note3, ntexte)):
+    # Les saisies deja rangees par coordonnee et situees sous un tableau
+    # agrandi descendent avec lui (NOTE 13 : "Apporteurs, capital non
+    # appele" et le total, places sous le detail des associes).
+    plan = plan if plan is not None else plan_tableaux(note3, ntexte)
+    for feuille, insertions in decalages_lignes(plan).items():
+        for source in (n3.get(feuille), nt.get(feuille)):
+            if not source:
+                continue
+            for cle in [c for c in source if _COORD.match(str(c))]:
+                m = _COORD.match(str(cle))
+                ligne = ligne_decalee(int(m.group(2)), insertions)
+                if ligne != int(m.group(2)):
+                    source["%s%d" % (m.group(1), ligne)] = source.pop(cle)
+
+    for entree in plan:
         feuille = entree["feuille"]
         prefixe = entree["prefixe"]
         pref_lib = entree["prefixe_libelle"]
@@ -709,6 +743,28 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
             n3[feuille] = raw
         if txt:
             nt[feuille] = txt
+
+    # NOTE 13 : la colonne "Montant total" vaut valeur nominale x nombre de
+    # titres, et le TOTAL ajoute la ligne "Apporteurs, capital non appele".
+    # Ces deux valeurs sont calculees, jamais saisies : sans cette reprise
+    # elles sortaient vides du classeur comme du fichier XML.
+    entree13 = next((e for e in plan if e["feuille"] == "NOTE 13"), None)
+    raw13 = n3.get("NOTE 13")
+    if entree13 and raw13 and entree13["lignes"]:
+        import calc_engine as ce13
+        nominale = ce13._num(raw13.get("L8"))
+        base13 = entree13["base"]
+        total13 = 0.0
+        for rang in range(entree13["lignes"]):
+            ligne = base13 + rang
+            nombre = ce13._num(raw13.get("J%d" % ligne))
+            if nominale and nombre:
+                raw13["K%d" % ligne] = nominale * nombre
+            total13 += ce13._num(raw13.get("K%d" % ligne))
+        ligne_apporteurs = base13 + entree13["lignes"]
+        total13 += ce13._num(raw13.get("K%d" % ligne_apporteurs))
+        if total13:
+            raw13["K%d" % (ligne_apporteurs + 1)] = total13
 
     if cellules or colonnes:
         for feuille, valeurs in n3.items():
@@ -928,6 +984,7 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
     # Les tableaux a lignes ajoutables peuvent en compter plus que la plage
     # reservee par le modele : c'est la saisie qui fixe leur hauteur, sans
     # quoi un inventaire de soixante immobilisations n'en exporterait qu'une.
+    decal_feuilles = decalages_lignes(plan)
     plan_par_tableau = {}
     for e in plan:
         if e["premiere_modele"] and e["lignes"]:
@@ -965,7 +1022,11 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
         if c["code_champ"] in fiches_fixes:
             v, is_text = fiches_fixes[c["code_champ"]]
         else:
-            row = c["premiere_row"] + c["pos_ligne"] - 1
+            # Une feuille dont un tableau a ete agrandi voit ses lignes
+            # suivantes descendre : les saisies y ont ete replacees, la
+            # lecture doit suivre le meme decalage.
+            row = ligne_decalee(c["premiere_row"] + c["pos_ligne"] - 1,
+                                decal_feuilles.get(c["onglet"]))
             col = c["premiere_col"] + c["pos_col"] - 1
             v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)
         fv = _format_value(v, is_text)

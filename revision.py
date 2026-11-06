@@ -963,7 +963,8 @@ def controles_var(c, balN, balN1, bilan):
 # ---------------------------------------------------------------------------
 # ETA  coherence inter-etats
 # ---------------------------------------------------------------------------
-def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
+def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
+                  manual=None):
     def v(d, k):
         return _n((d or {}).get(k))
 
@@ -1196,6 +1197,35 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None):
               % (_fmt(amort_bilan), _fmt(amort_balance), _fmt(amort_bilan - amort_balance)),
               BLOQUANT, None, amort_bilan - amort_balance)
 
+    # ETA-29 : rapprochement de l'inventaire des immobilisations (feuille
+    # SUPPL4, tableau des amortissements) avec l'actif immobilise net du
+    # bilan. Purement informatif : l'inventaire est une piece de travail, et
+    # un ecart peut etre legitime (immobilisations entierement amorties encore
+    # listees, biens non encore immobilises comptablement, arrondis). Il vaut
+    # neanmoins d'etre connu avant le depot, c'est l'un des premiers
+    # rapprochements que demande un controle fiscal.
+    suppl4 = (manual or {}).get("SUPPL4") or {}
+    if suppl4:
+        def _colonne_suppl4(lettre):
+            prefixe = "D_%s_" % lettre
+            return sum(_n(val) for cle, val in suppl4.items()
+                       if isinstance(cle, str) and cle.startswith(prefixe))
+        acquisition = _colonne_suppl4("G")
+        residuelle = acquisition - _colonne_suppl4("H") - _colonne_suppl4("I")
+        net_bilan = v(bilan, "H26")
+        ecart = residuelle - net_bilan
+        if acquisition and net_bilan and abs(ecart) > tol:
+            c.add("ETA-29", "ETA",
+                  "Inventaire des immobilisations : la valeur residuelle totale de la "
+                  "feuille SUPPL4 (%s) differe de l'actif immobilise net du bilan (%s), "
+                  "ecart de %s. Information, non bloquante : l'inventaire peut "
+                  "legitimement s'ecarter de la comptabilite (biens entierement amortis "
+                  "encore inventories, acquisitions non encore immobilisees, arrondis). "
+                  "Rapprochez les deux avant le depot, c'est l'un des premiers controles "
+                  "demandes en cas de verification."
+                  % (_fmt(residuelle), _fmt(net_bilan), _fmt(ecart)),
+                  INFO, None, ecart)
+
     # ETA-19 a ETA-23 et ETA-26 : chaque note de charges est rapprochee de la
     # ligne correspondante du compte de resultat. Les notes ventilent sur des
     # sous-plages etroites ; un compte tenu a un niveau plus agrege echappe a
@@ -1367,7 +1397,7 @@ def run_controls(balN, balN1, bilan=None, resultat=None, tft=None, manual=None,
         (controles_imm, (balN, balN1, manual), "IMM"),
         (controles_stk, (balN, balN1), "STK"),
         (controles_var, (balN, balN1, bilan), "VAR"),
-        (controles_eta, (bilan, resultat, tft, balN, balN1, notes), "ETA"),
+        (controles_eta, (bilan, resultat, tft, balN, balN1, notes, manual), "ETA"),
         (controles_cpl, (client, exo, manual, balN, textes), "CPL"),
     ):
         try:
