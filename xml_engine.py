@@ -469,6 +469,12 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
 #   (feuille, prefixe valeurs, prefixe libelle, colonne du libelle,
 #    premiere ligne, lignes imposees, lignes reservees par le modele)
 TABLEAUX_DYNAMIQUES = (
+    # FICHE R1 : domiciliations bancaires (zone ZW du classeur). Aucun code
+    # DGI ne leur correspond : elles figurent dans le classeur, pas dans le
+    # fichier XML, qui ne prevoit pas de champ pour les comptes bancaires.
+    ("FICHE R1", "BANQUE", "banque_nom",   "J", 52,   None,         9),
+    # NOTE 21 : produits accessoires a detailler par nature (tableau NOTE21B).
+    ("NOTE 21",  "PA",     "pa_designation", "A", 28, None,         1),
     ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None,         52),
     # Les trois rubriques de l'etat annexe occupent des lignes fixes et non
     # contigues dans le classeur (D18/F18, D19/F19 puis D23/F23) : la DGI les
@@ -491,6 +497,7 @@ TABLEAUX_DYNAMIQUES = (
 COLONNES_ANNEXES = {
     ("SUPPL1", "PR"): (("unite_pr", "J"),),           # unite de quantite choisie
     ("SUPPL4", "D"):  (("compte", "A"), ("date", "F")),  # compte et mise en service
+    ("FICHE R1", "BANQUE"): (("banque_compte", "Q"),),   # numero de compte
 }
 
 
@@ -547,6 +554,48 @@ def plan_tableaux(note3, ntexte):
         })
         decalage[feuille] = d + a_inserer
     return plan
+
+
+# Totaux que le classeur calcule par une formule auto-ajustable
+# (SUM(INDIRECT(...))) : ces formules n'ont pas pu etre extraites dans
+# sheets_raw.json, le moteur les voit donc comme vides. Sans cette reprise,
+# les lignes de detail ajoutees ne remontent pas dans les totaux — la NOTE 21
+# affichait un chiffre d'affaires ampute de ses produits accessoires.
+#   feuille -> {cellule du total: (prefixe des valeurs, colonne)}
+TOTAUX_DYNAMIQUES = {
+    "NOTE 21": {"F27": ("PA", "F"), "G27": ("PA", "G")},
+}
+
+
+def totaux_dynamiques(note3):
+    """Valeurs a ajouter aux saisies avant le calcul des feuilles."""
+    import calc_engine as ce
+    out = {}
+    for feuille, cibles in TOTAUX_DYNAMIQUES.items():
+        raw = (note3 or {}).get(feuille) or {}
+        for cellule, (prefixe, colonne) in cibles.items():
+            if cellule in raw:
+                continue
+            motif = re.compile(r"^%s_%s_(\d+)$" % (re.escape(prefixe), re.escape(colonne)))
+            total = 0.0
+            trouve = False
+            for cle, valeur in raw.items():
+                if motif.match(str(cle)):
+                    total += ce._num(valeur)
+                    trouve = True
+            if trouve:
+                out.setdefault(feuille, {})[cellule] = total
+    return out
+
+
+def saisies_pour_moteur(note3, feuilles=None):
+    """Saisies a transmettre au moteur de calcul, totaux dynamiques inclus."""
+    base = dict((f, dict(v)) for f, v in (note3 or {}).items()
+                if feuilles is None or f in feuilles)
+    for feuille, cellules in totaux_dynamiques(note3).items():
+        if feuilles is None or feuille in feuilles:
+            base.setdefault(feuille, {}).update(cellules)
+    return base
 
 
 def _ligne_dynamique(premiere, imposees, rang):
@@ -863,7 +912,7 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
 
     # Autres feuilles calculées : via compute_workbook (gère les références croisées)
     other_calc = [s for s in ce.SHEETS_RAW.keys() if s not in ("BILAN", "RESULTAT", "TFT")]
-    manual_for_engine = {sh: note3[sh] for sh in other_calc if sh in note3}
+    manual_for_engine = saisies_pour_moteur(note3, set(other_calc))
     notes_cache = ce.compute_workbook(
         other_calc, balN, balN1,
         manual=manual_for_engine,
@@ -961,6 +1010,18 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
                     v, is_text = fiches_vars[cle]
                 elif lignes_fiche:
                     continue          # tableau d'identification : rien de plus
+                elif etendu:
+                    # Tableau a lignes ajoutables : ses lignes se lisent dans
+                    # la saisie, pas dans la feuille calculee. Sans cela, la
+                    # deuxieme ligne de detail renverrait la ligne de total
+                    # qui la suit dans le modele.
+                    col = c["premiere_col"] + c["pos_col"] - 1
+                    coord = _num_to_col(col) + str(row)
+                    txt = (ntexte.get(c["onglet"]) or {}).get(coord)
+                    if txt not in (None, ""):
+                        v, is_text = txt, True
+                    else:
+                        v, is_text = (note3.get(c["onglet"]) or {}).get(coord), False
                 else:
                     col = c["premiere_col"] + c["pos_col"] - 1
                     v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)

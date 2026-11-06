@@ -6556,6 +6556,39 @@ def cellules_liasse():
 
 
 _COORD_CELLULE = re.compile(r"^[A-Z]{1,3}[0-9]{1,5}$")
+_COORD_PARTS = re.compile(r"^([A-Z]{1,3})([0-9]{1,5})$")
+
+
+def _coord_decalee(coord, insertions):
+    """Coordonnee d'une cellule apres insertion de lignes dans la feuille."""
+    if not insertions:
+        return coord
+    m = _COORD_PARTS.match(str(coord))
+    if not m:
+        return coord
+    colonne, ligne = m.group(1), int(m.group(2))
+    decalage = sum(n for depart, n in insertions if ligne >= depart)
+    return "%s%d" % (colonne, ligne + decalage) if decalage else coord
+
+
+def _coord_origine(coord, insertions):
+    """Coordonnee correspondante dans le modele, avant insertion de lignes.
+
+    Retourne None si la cellule appartient a une ligne ajoutee : elle n'a pas
+    d'equivalent dans le modele, donc aucune formule a preserver."""
+    if not insertions:
+        return coord
+    m = _COORD_PARTS.match(str(coord))
+    if not m:
+        return coord
+    colonne, ligne = m.group(1), int(m.group(2))
+    decalage = 0
+    for depart, n in sorted(insertions):
+        if ligne >= depart + n:
+            decalage += n
+        elif ligne >= depart:
+            return None
+    return "%s%d" % (colonne, ligne - decalage) if decalage else coord
 
 
 def _formule_decalee(formule, ligne_source, ligne_cible, colonne):
@@ -6581,7 +6614,7 @@ def _etendre_tableaux(wb, plan):
 
     Les entrees du plan sont traitees dans l'ordre, leurs lignes de depart
     tenant deja compte des insertions faites au-dessus sur la meme feuille."""
-    total = 0
+    insertions = {}
     for entree in plan:
         n = entree.get("a_inserer") or 0
         feuille = entree["feuille"]
@@ -6650,8 +6683,8 @@ def _etendre_tableaux(wb, plan):
                 if c in formules:
                     cible.value = _formule_decalee(
                         formules[c], base, r, get_column_letter(c))
-        total += n
-    return total
+        insertions.setdefault(feuille, []).append((depart, n))
+    return insertions
 
 
 def _ecrire_cellule(ws, coord, valeur):
@@ -6666,7 +6699,8 @@ def _ecrire_cellule(ws, coord, valeur):
         return False
 
 
-def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calculees):
+def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calculees,
+                              plan=None, insertions=None):
     """Ecrit dans le classeur les donnees saisies a la main.
 
     Les feuilles calculees sont deja remplies par le moteur de calcul et ne
@@ -6682,18 +6716,24 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
     # Les lignes de detail ajoutables recoivent leur coordonnee de cellule et
     # les taux saisis passent en fraction : meme preparation que pour l'export
     # XML, pour que les deux fichiers portent exactement les memes valeurs.
-    plan = xe.plan_tableaux(note3_manual, note_texte)
-    _etendre_tableaux(wb, plan)
+    if plan is None:
+        plan = xe.plan_tableaux(note3_manual, note_texte)
+    insertions = insertions or {}
+    note3_origine = note3_manual
     note3_manual, note_texte = xe.preparer_saisies(note3_manual, note_texte, plan)
 
     def _ecrivable(feuille, coord):
         """Sur une feuille calculee, on n'ecrit que les cases de saisie : une
-        cellule porteuse d'une formule garde la valeur du moteur."""
+        cellule porteuse d'une formule garde la valeur du moteur. La formule
+        se cherche a la coordonnee du modele, avant insertion de lignes."""
         if feuille not in wb.sheetnames or not _COORD_CELLULE.match(str(coord)):
             return False
         if feuille not in calculees:
             return True
-        brut = ce.SHEETS_RAW.get(feuille, {}).get(coord)
+        origine = _coord_origine(coord, insertions.get(feuille))
+        if origine is None:
+            return True
+        brut = ce.SHEETS_RAW.get(feuille, {}).get(origine)
         return not (isinstance(brut, str) and brut.startswith("="))
 
     # 1. Valeurs numeriques : la coordonnee est deja celle du classeur.
@@ -6706,6 +6746,18 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
                     continue
                 if _ecrire_cellule(wb[feuille], coord, valeur):
                     n += 1
+
+    # 2bis. Totaux que le modele calcule par une formule auto-ajustable : la
+    #       formule du classeur reference la ligne qui suivait le tableau
+    #       avant insertion, elle ne sommerait plus que la premiere ligne. On
+    #       ecrit la valeur, identique a celle du moteur et du fichier XML.
+    for feuille, cellules in xe.totaux_dynamiques(note3_origine).items():
+        if feuille not in wb.sheetnames:
+            continue
+        for coord, valeur in cellules.items():
+            if _ecrire_cellule(wb[feuille],
+                               _coord_decalee(coord, insertions.get(feuille)), valeur):
+                n += 1
 
     # 3. Autres zones de texte : passage par les codes de champ de la DGI.
     try:
@@ -6723,7 +6775,7 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
         feuille, coord = cible
         if feuille in calculees or feuille not in wb.sheetnames:
             continue
-        if _ecrire_cellule(wb[feuille], coord, valeur):
+        if _ecrire_cellule(wb[feuille], _coord_decalee(coord, insertions.get(feuille)), valeur):
             n += 1
 
     # Codes statistiques de la FICHE R2 : le classeur va les chercher dans ses
@@ -6736,7 +6788,8 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
             continue
         cible = (carte.get("champs") or {}).get(code)
         if cible and cible[0] not in calculees and cible[0] in wb.sheetnames:
-            _ecrire_cellule(wb[cible[0]], cible[1], None)
+            _ecrire_cellule(wb[cible[0]],
+                            _coord_decalee(cible[1], insertions.get(cible[0])), None)
 
     for (code, ligne), (valeur, _texte) in (variables or {}).items():
         cible = (carte.get("colonnes") or {}).get(code)
@@ -6746,6 +6799,7 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
         if feuille in calculees or feuille not in wb.sheetnames:
             continue
         coord = "%s%d" % (colonne, premiere + max(0, int(ligne) - 1))
+        coord = _coord_decalee(coord, insertions.get(feuille))
         if _ecrire_cellule(wb[feuille], coord, valeur):
             n += 1
 
@@ -6878,7 +6932,8 @@ def view_export_xlsx(req, conn, user, exercice_id):
         all_sheets["TFT"] = _exportable_cells("TFT", ce.compute_sheet("TFT", balN, balN1, tftn, tftn1))
 
     note_sheets = [k for k in ce.SHEETS_RAW.keys() if k not in ("BILAN", "RESULTAT", "TFT")]
-    notes_computed = ce.compute_workbook(note_sheets, balN, balN1, manual=note3_manual)
+    notes_computed = ce.compute_workbook(
+        note_sheets, balN, balN1, manual=xe.saisies_pour_moteur(note3_manual))
     for sh, cache in notes_computed.items():
         all_sheets[sh] = _exportable_cells(sh, cache, note3_manual.get(sh, {}))
 
@@ -6886,14 +6941,23 @@ def view_export_xlsx(req, conn, user, exercice_id):
         return Response("Modèle d'export introuvable sur le serveur.", status="500 Internal Server Error")
 
     wb = openpyxl.load_workbook(EXPORT_TEMPLATE_PATH)
+    note_texte = load_note_texte(conn, exercice_id)
+
+    # ── 0. Agrandir les tableaux à lignes ajoutables ────────────────────────
+    # Le modèle ne réserve qu'une ou deux lignes de détail par tableau. Les
+    # lignes manquantes sont insérées AVANT toute écriture, et les
+    # coordonnées des cellules situées plus bas sont décalées d'autant.
+    plan = xe.plan_tableaux(note3_manual, note_texte)
+    insertions = _etendre_tableaux(wb, plan)
 
     # ── 1. Écrire les valeurs calculées ─────────────────────────────────────
     for sheet_name, cells in all_sheets.items():
         if sheet_name not in wb.sheetnames:
             continue
         ws = wb[sheet_name]
+        decal = insertions.get(sheet_name)
         for coord, value in cells.items():
-            _set_cell_safe(ws, coord, value)
+            _set_cell_safe(ws, _coord_decalee(coord, decal), value)
 
     # ── 2. Écrire les notes et fiches qui ne sont pas calculées ─────────────
     # NOTE 1, 12, 13, 15B, 16B, 16B BIS, 16C, 27B, 30 à 33, SUPPL1 à SUPPL7,
@@ -6901,9 +6965,9 @@ def view_export_xlsx(req, conn, user, exercice_id):
     # 2, 35, 38 et 39 n'ont pas de formule : leur contenu vient entièrement de
     # la saisie. Elles étaient supprimées du fichier exporté ; elles sont
     # désormais remplies à partir des saisies de l'exercice.
-    note_texte = load_note_texte(conn, exercice_id)
     _remplir_feuilles_saisies(
-        wb, client, exo, note3_manual, note_texte, set(all_sheets.keys())
+        wb, client, exo, note3_manual, note_texte, set(all_sheets.keys()),
+        plan, insertions,
     )
 
     # ── 2bis. Alimenter les tableaux sources (BalanceN, BalanceN1, TFT) ─────
