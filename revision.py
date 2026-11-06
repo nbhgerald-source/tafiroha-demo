@@ -1297,7 +1297,51 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
 # ---------------------------------------------------------------------------
 # CPL  completude avant depot
 # ---------------------------------------------------------------------------
+def _controle_listes_imposees(c, textes):
+    """CPL-11 : valeurs hors referentiel sur les colonnes que e-impots impose.
+
+    La plateforme refuse la liasse entiere avec "La valeur ne fait pas partie
+    de celles autorisees". Mieux vaut le savoir ici que sur le portail : une
+    nationalite saisie "IVOIRIENNE" doit etre le pays, "Cote d'Ivoire"."""
+    try:
+        import xml_engine as xe
+        import app as _app
+    except Exception:
+        return
+    listes = getattr(_app, "LISTES_NOTE13", None) or {}
+    if not listes or not textes:
+        return
+    index = {cle: {xe._cle_comparaison(v) for v in (vals or ())}
+             for cle, vals in listes.items()}
+    libelles = {"F": "Nationalite", "G": "Autres nationalites",
+                "H": "Pays de residence", "I": "Nature des actions ou parts"}
+    fautifs = []
+    for (feuille, colonne), cle in sorted(xe.LISTES_IMPOSEES.items()):
+        valides = index.get(cle)
+        source = (textes or {}).get(feuille) or {}
+        if not valides:
+            continue
+        for champ, valeur in sorted(source.items()):
+            m = re.match(r"^assoc_([A-Z])_(\d+)$", str(champ), re.I)
+            if not m or m.group(1).upper() != colonne:
+                continue
+            txt = str(valeur or "").strip()
+            if txt and xe._cle_comparaison(txt) not in valides:
+                fautifs.append("%s ligne %d : \"%s\""
+                               % (libelles.get(colonne, colonne), int(m.group(2)) + 1, txt))
+    if fautifs:
+        c.add("CPL-11", "CPL",
+              "NOTE 13 : %d valeur(s) hors du referentiel DGI — %s. e-impots "
+              "rejette la liasse entiere avec le message \"La valeur ne fait pas "
+              "partie de celles autorisees\". Ces colonnes attendent un nom de "
+              "pays du referentiel officiel : choisissez-le dans la liste "
+              "deroulante de la NOTE 13."
+              % (len(fautifs), " ; ".join(fautifs[:6])),
+              BLOQUANT, None, None)
+
+
 def controles_cpl(c, client, exo, manual, balN, textes=None):
+    _controle_listes_imposees(c, textes)
     if not (client and str(client["ncc"] or "").strip()):
         c.add("CPL-01", "CPL",
               "NCC du client non renseigne : le fichier XML sera rejete par la DGI",

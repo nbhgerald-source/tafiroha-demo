@@ -625,6 +625,67 @@ def ligne_decalee(ligne, insertions):
     return int(ligne) + sum(n for dep, n in (insertions or ()) if int(ligne) >= dep)
 
 
+# Colonnes dont e-impots impose la valeur : elle doit figurer telle quelle
+# dans le referentiel officiel. L'apostrophe typographique, une majuscule ou
+# un accent de trop suffisent a faire rejeter la liasse
+# ("La valeur ne fait pas partie de celles autorisees").
+#   (feuille, colonne) -> cle du referentiel
+LISTES_IMPOSEES = {
+    ("NOTE 13", "F"): "pays_residence",   # Nationalite
+    ("NOTE 13", "G"): "pays_residence",   # Autres nationalites
+    ("NOTE 13", "H"): "pays_residence",   # Pays de residence
+    ("NOTE 13", "I"): "nature_actions",   # Ordinaires / Preferences
+}
+
+
+def _cle_comparaison(valeur):
+    """Forme comparable d'un libelle : sans accent, sans casse, apostrophes
+    et espaces unifies."""
+    import unicodedata
+    s = unicodedata.normalize("NFD", str(valeur or ""))
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    for apo in ("\u2019", "\u02bc", "`", "\u00b4"):
+        s = s.replace(apo, "'")
+    return " ".join(s.lower().split())
+
+
+def _referentiels():
+    try:
+        import app
+        return app.LISTES_NOTE13 or {}
+    except Exception:
+        return {}
+
+
+def normaliser_listes(note3, ntexte):
+    """Recale les valeurs saisies sur l'orthographe exacte du referentiel.
+
+    Une valeur approchante (apostrophe courbe, accent manquant, casse
+    differente) est remplacee par l'entree officielle. Une valeur qui n'y
+    correspond pas est laissee telle quelle : c'est une erreur de saisie que
+    le controle de revision signale."""
+    listes = _referentiels()
+    if not listes:
+        return
+    index = {}
+    for cle, valeurs in listes.items():
+        index[cle] = {}
+        for v in valeurs or ():
+            index[cle].setdefault(_cle_comparaison(v), v)
+    for (feuille, colonne), cle in LISTES_IMPOSEES.items():
+        officiel = index.get(cle)
+        source = (ntexte or {}).get(feuille)
+        if not officiel or not source:
+            continue
+        for coord in list(source):
+            m = _COORD.match(str(coord))
+            if not m or m.group(1) != colonne:
+                continue
+            exact = officiel.get(_cle_comparaison(source[coord]))
+            if exact and exact != source[coord]:
+                source[coord] = exact
+
+
 def _ligne_dynamique(premiere, imposees, rang):
     """Ligne du classeur correspondant au rang d'une ligne de detail."""
     if imposees:
@@ -774,6 +835,8 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
         total13 += ce13._num(raw13.get("K%d" % ligne_apporteurs))
         if total13:
             raw13["K%d" % (ligne_apporteurs + 1)] = total13
+
+    normaliser_listes(n3, nt)
 
     if cellules or colonnes:
         for feuille, valeurs in n3.items():

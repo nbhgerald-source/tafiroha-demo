@@ -3339,8 +3339,11 @@ def compute_note13(manual, note_texte):
     #   type : "texte" ou "nombre" ; liste : cle du referentiel DGI, si impose
     cols = [
         ("E", "N° compte contribuable", "texte", None),
-        ("F", "Nationalité", "texte", None),
-        ("G", "Autres nationalités à préciser", "texte", None),
+        # Le referentiel officiel traite "Nationalite & Pays de residence"
+        # comme une seule liste de pays : e-impots refuse toute autre valeur
+        # ("IVOIRIENNE" etait rejete, il faut "Cote d'Ivoire").
+        ("F", "Nationalité", "texte", "pays_residence"),
+        ("G", "Autres nationalités à préciser", "texte", "pays_residence"),
         ("H", "Pays de résidence", "texte", "pays_residence"),
         ("I", "Nature des actions/parts", "texte", "nature_actions"),
         ("J", "Nombre", "nombre", None),
