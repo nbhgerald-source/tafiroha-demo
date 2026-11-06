@@ -6415,6 +6415,178 @@ def handle_upload(req, conn, exercice_id):
 
 EXPORT_TEMPLATE_PATH = os.path.join(STATIC_DIR, "export_template.xlsx")
 
+# Feuilles du classeur modele qui ne font pas partie de la liasse : feuilles
+# de parametrage, referentiels et feuilles de travail de la macro officielle.
+# Elles sont les seules a etre retirees du fichier exporte ; toutes les
+# autres, calculees ou saisies, sont conservees.
+EXPORT_FEUILLES_TECHNIQUES = (
+    "Referentiels", "Export XML", "tableaux", "champs fixes",
+    "champs variables", "export", "TABLE DE CONVERSION", "Table TFT",
+    "Code", "parametrage", "CODE ACTIVITE", "Plan comptable",
+)
+
+# Correspondance entre les codes de champ de la DGI et les cellules du
+# classeur, extraite des feuilles "tableaux", "champs fixes" et "champs
+# variables" du modele officiel. Elle permet d'ecrire dans le fichier exporte
+# les zones de texte des notes litteraires et des fiches d'identification, qui
+# sont stockees par nom de champ et non par coordonnee.
+_CELLULES_LIASSE = None
+
+
+def cellules_liasse():
+    global _CELLULES_LIASSE
+    if _CELLULES_LIASSE is None:
+        try:
+            with open(os.path.join(BASE_DIR, "cellules_liasse.json"), encoding="utf-8") as fh:
+                _CELLULES_LIASSE = json.load(fh)
+        except Exception:
+            _CELLULES_LIASSE = {"champs": {}, "colonnes": {}}
+    return _CELLULES_LIASSE
+
+
+# Tableaux a lignes de detail dynamiques ("+ Ajouter une ligne"). Le nombre
+# de lignes n'etant pas connu d'avance, l'application range leurs valeurs sous
+# des cles "<prefixe>_<colonne>_<rang>" et leurs libelles sous
+# "<prefixe_libelle>_<rang>", et non sous une coordonnee de cellule. Le
+# classeur, lui, attend ces lignes a partir d'une ligne fixe, indiquee par la
+# feuille "champs variables" du modele officiel.
+#   (feuille, prefixe valeurs, prefixe libelle, colonne du libelle,
+#    premiere ligne, lignes imposees)
+EXPORT_TABLEAUX_DYNAMIQUES = (
+    ("SUPPL1",   "AX",     "desig_ax",     "A", None, (17, 19, 23)),
+    ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None),
+    ("SUPPL2",   "D",      "desig",        "A", 9,    None),
+    ("SUPPL4",   "D",      "desig",        "A", 10,   None),
+    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None),
+    ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None),
+    ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None),
+    ("NOTE 32",  "D",      "desig",        "A", 11,   None),
+    ("NOTE 33",  "D",      "desig",        "A", 12,   None),
+)
+# SUPPL1, tableau des produits : la colonne J porte l'unite de quantite,
+# saisie a part (texte "unite_pr_<rang>").
+EXPORT_COLONNES_ANNEXES = {
+    ("SUPPL1", "PR"): (("unite_pr", "J"),),
+}
+
+
+def _ligne_dynamique(premiere, imposees, rang):
+    """Ligne du classeur correspondant au rang d'une ligne de detail."""
+    if imposees:
+        return imposees[rang] if rang < len(imposees) else None
+    return premiere + rang
+
+
+def _remplir_tableaux_dynamiques(wb, note3_manual, note_texte, calculees):
+    """Reporte dans le classeur les lignes de detail ajoutables."""
+    import re as _re
+    n = 0
+    for feuille, prefixe, pref_lib, col_lib, premiere, imposees in EXPORT_TABLEAUX_DYNAMIQUES:
+        if feuille in calculees or feuille not in wb.sheetnames:
+            continue
+        raw = (note3_manual or {}).get(feuille, {}) or {}
+        txt = (note_texte or {}).get(feuille, {}) or {}
+        ws = wb[feuille]
+        motif = _re.compile(r"^%s_([A-Z]{1,2})_(\d+)$" % _re.escape(prefixe))
+        for source in (raw, txt):
+            for cle, valeur in source.items():
+                m = motif.match(str(cle))
+                if not m or valeur in (None, ""):
+                    continue
+                ligne = _ligne_dynamique(premiere, imposees, int(m.group(2)))
+                if ligne and _ecrire_cellule(ws, "%s%d" % (m.group(1), ligne), valeur):
+                    n += 1
+        motif_lib = _re.compile(r"^%s_(\d+)$" % _re.escape(pref_lib))
+        for cle, valeur in txt.items():
+            m = motif_lib.match(str(cle))
+            if not m or valeur in (None, ""):
+                continue
+            ligne = _ligne_dynamique(premiere, imposees, int(m.group(1)))
+            if ligne and _ecrire_cellule(ws, "%s%d" % (col_lib, ligne), valeur):
+                n += 1
+        for pref_sup, col_sup in EXPORT_COLONNES_ANNEXES.get((feuille, prefixe), ()):
+            motif_sup = _re.compile(r"^%s_(\d+)$" % _re.escape(pref_sup))
+            for cle, valeur in txt.items():
+                m = motif_sup.match(str(cle))
+                if not m or valeur in (None, ""):
+                    continue
+                ligne = _ligne_dynamique(premiere, imposees, int(m.group(1)))
+                if ligne and _ecrire_cellule(ws, "%s%d" % (col_sup, ligne), valeur):
+                    n += 1
+    return n
+
+
+def _ecrire_cellule(ws, coord, valeur):
+    """Comme _set_cell_safe, mais indique si l'ecriture a eu lieu."""
+    try:
+        cell = ws[coord]
+        if cell.__class__.__name__ == "MergedCell":
+            return False
+        cell.value = valeur
+        return True
+    except Exception:
+        return False
+
+
+def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calculees):
+    """Ecrit dans le classeur les donnees saisies a la main.
+
+    Les feuilles calculees sont deja remplies par le moteur de calcul et ne
+    sont pas touchees ici : on ne s'occupe que des notes et des fiches dont
+    l'application est la seule source (NOTE 1, 12, 13, 15B, 16B, 16C, 27B,
+    30 a 33, SUPPL1 a SUPPL7, COMP-TVA, les fiches R1 a R3, la page de garde
+    et les notes litteraires 2, 35, 38 et 39).
+
+    Retourne le nombre de cellules ecrites."""
+    carte = cellules_liasse()
+    n = 0
+
+    # 1. Valeurs numeriques : la coordonnee est deja celle du classeur.
+    for feuille, cellules in (note3_manual or {}).items():
+        if feuille in calculees or feuille not in wb.sheetnames:
+            continue
+        ws = wb[feuille]
+        for coord, valeur in cellules.items():
+            if str(coord).startswith("_N_") or valeur in (None, ""):
+                continue
+            if _ecrire_cellule(ws, coord, valeur):
+                n += 1
+
+    # 2. Zones de texte : passage par les codes de champ de la DGI.
+    try:
+        fixes, variables = xe._fiches_identification(
+            dict(client) if client else {}, dict(exo) if exo else {},
+            note_texte or {}, note3_manual or {},
+        )
+    except Exception:
+        fixes, variables = {}, {}
+
+    for code, (valeur, _texte) in (fixes or {}).items():
+        cible = (carte.get("champs") or {}).get(code)
+        if not cible:
+            continue
+        feuille, coord = cible
+        if feuille in calculees or feuille not in wb.sheetnames:
+            continue
+        if _ecrire_cellule(wb[feuille], coord, valeur):
+            n += 1
+
+    for (code, ligne), (valeur, _texte) in (variables or {}).items():
+        cible = (carte.get("colonnes") or {}).get(code)
+        if not cible:
+            continue
+        feuille, colonne, premiere = cible
+        if feuille in calculees or feuille not in wb.sheetnames:
+            continue
+        coord = "%s%d" % (colonne, premiere + max(0, int(ligne) - 1))
+        if _ecrire_cellule(wb[feuille], coord, valeur):
+            n += 1
+
+    # 4. Lignes de detail ajoutables (tableaux a nombre de lignes variable).
+    n += _remplir_tableaux_dynamiques(wb, note3_manual, note_texte, calculees)
+
+    return n
+
 
 def _fill_sheet_header(ws, client, exo):
     """Remplace les formules inter-feuilles des lignes d'en-tête (1-7) par les
@@ -6511,7 +6683,17 @@ def _exportable_cells(sheet, cache, manual_sheet=None):
 
 
 def view_export_xlsx(req, conn, user, exercice_id):
-    """Exporte les feuilles principales (BILAN, RESULTAT, TFT + NOTES) vers .xlsx."""
+    """Exporte la liasse complète d'un exercice vers un fichier .xlsx.
+
+    Le classeur Excel original (export_template.xlsx) sert de modèle, ce qui
+    conserve exactement sa mise en forme (styles, fusions, largeurs). Y sont
+    écrites les feuilles calculées à partir de sheets_raw.json (BILAN,
+    RESULTAT, TFT et les 31 notes à formules) puis, depuis la saisie, toutes
+    les feuilles sans formule : notes 1, 12, 13, 15B, 16B, 16B BIS, 16C, 27B,
+    30 à 33, états supplémentaires SUPPL1 à SUPPL7, COMP-TVA, fiches R1 à R3,
+    page de garde et notes littéraires 2, 35, 38 et 39. Seules les feuilles
+    techniques du modèle (référentiels et feuilles de paramétrage de la macro
+    officielle) sont retirées."""
     exo = conn.execute("SELECT * FROM exercices WHERE id=?", (exercice_id,)).fetchone()
     if not exo:
         return Response("Exercice introuvable", status="404 Not Found")
@@ -6549,17 +6731,25 @@ def view_export_xlsx(req, conn, user, exercice_id):
         for coord, value in cells.items():
             _set_cell_safe(ws, coord, value)
 
-    # ── 2. Remplir les en-têtes avec les informations du client ─────────────
-    for sheet_name in list(all_sheets.keys()):
-        if sheet_name not in wb.sheetnames:
-            continue
-        _fill_sheet_header(wb[sheet_name], client, exo)
+    # ── 2. Écrire les notes et fiches qui ne sont pas calculées ─────────────
+    # NOTE 1, 12, 13, 15B, 16B, 16B BIS, 16C, 27B, 30 à 33, SUPPL1 à SUPPL7,
+    # COMP-TVA, les fiches R1 à R3, la page de garde et les notes littéraires
+    # 2, 35, 38 et 39 n'ont pas de formule : leur contenu vient entièrement de
+    # la saisie. Elles étaient supprimées du fichier exporté ; elles sont
+    # désormais remplies à partir des saisies de l'exercice.
+    note_texte = load_note_texte(conn, exercice_id)
+    _remplir_feuilles_saisies(
+        wb, client, exo, note3_manual, note_texte, set(all_sheets.keys())
+    )
 
-    # ── 3. Supprimer toutes les feuilles non exportées ──────────────────────
-    sheets_to_keep = set(all_sheets.keys())
+    # ── 3. Ne retirer que les feuilles techniques du modèle ─────────────────
     for sheet_name in list(wb.sheetnames):
-        if sheet_name not in sheets_to_keep:
+        if sheet_name in EXPORT_FEUILLES_TECHNIQUES:
             del wb[sheet_name]
+
+    # ── 4. Remplir les en-têtes avec les informations du client ─────────────
+    for sheet_name in list(wb.sheetnames):
+        _fill_sheet_header(wb[sheet_name], client, exo)
 
     buf = io.BytesIO()
     wb.save(buf)
