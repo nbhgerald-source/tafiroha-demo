@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Importer un dossier client</h2>
+  <p class="muted">
+    Une archive <code>.tafiroha</code> contient la totalité d'un dossier :
+    le client, ses exercices, les balances N et N-1, le détail TFT, toutes les
+    saisies manuelles, la codification, le pointage et les anomalies de
+    révision. Elle sert à transporter un dossier d'un poste à un autre, à le
+    sauvegarder, ou à le confier pour une intervention à distance.
+  </p>
+  <p class="muted">
+    Les comptes utilisateurs et les mots de passe ne voyagent pas : ils
+    restent propres à chaque installation.
+  </p>
+  <p><a href="/">← Retour au tableau de bord</a></p>
+</div>
+
+{% if erreur %}
+<div class="card" style="border-left:4px solid #b00020;">
+  <strong>Import impossible.</strong>
+  <p>{{ erreur }}</p>
+</div>
+{% endif %}
+
+{% if resultat %}
+<div class="card" style="border-left:4px solid #0e6655;">
+  <h3>Import terminé</h3>
+  <p>
+    {% if resultat['mode'] == 'remplacer' %}
+      Le dossier <strong>{{ resultat['nom'] }}</strong> a été remplacé par le
+      contenu de l'archive. Ses utilisateurs rattachés et ses accès sont
+      inchangés.
+    {% else %}
+      Le dossier <strong>{{ resultat['nom'] }}</strong> a été créé.
+    {% endif %}
+  </p>
+  <table>
+    <tr><th>Élément</th><th>Lignes importées</th></tr>
+    {% for cle, n in resultat['resume'].items() %}
+    <tr>
+      <td>{{ libelles.get(cle, cle) if libelles else cle }}</td>
+      <td>{{ n }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if resultat['avertissements'] %}
+  <p style="margin-top:12px;"><strong>Remarques :</strong></p>
+  <ul>
+    {% for a in resultat['avertissements'] %}<li>{{ a }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <p style="margin-top:14px;">
+    <a class="btn" href="/client/{{ resultat['client_id'] }}">Ouvrir le dossier →</a>
+  </p>
+</div>
+{% endif %}
+
+{% if manifest and not resultat %}
+<div class="card">
+  <h3>Contenu de l'archive</h3>
+  <table>
+    <tr><td>Dossier</td><td><strong>{{ manifest.get('client') or '—' }}</strong></td></tr>
+    <tr><td>NCC</td><td>{{ manifest.get('ncc') or '—' }}</td></tr>
+    <tr><td>Exercices</td><td>{{ manifest.get('annees') | join(', ') or '—' }}</td></tr>
+    <tr><td>Exporté le</td><td>{{ manifest.get('exporte_le') or '—' }}</td></tr>
+    <tr><td>Provenance</td><td>{{ manifest.get('origine') or '—' }}</td></tr>
+  </table>
+</div>
+{% endif %}
+
+{% if not resultat %}
+<div class="card">
+  <h3>Choisir l'archive</h3>
+  <form method="post" action="/dossier/import" enctype="multipart/form-data">
+    <p>
+      <label>Fichier du dossier (.tafiroha)<br>
+        <input type="file" name="fichier_dossier" accept=".tafiroha,.zip" required>
+      </label>
+    </p>
+
+    <p style="margin-top:18px;"><strong>Que faire de ce dossier ?</strong></p>
+
+    <p>
+      <label>
+        <input type="radio" name="mode" value="nouveau" checked>
+        Créer un nouveau dossier
+      </label><br>
+      <span class="muted">
+        Le dossier existant n'est pas touché. Si le nom est déjà utilisé, un
+        numéro est ajouté pour les distinguer.
+      </span>
+    </p>
+    <p style="margin-left:24px;">
+      <label>Renommer à l'import (facultatif)<br>
+        <input type="text" name="raison_sociale" size="40"
+               placeholder="laisser vide pour garder le nom d'origine">
+      </label>
+    </p>
+
+    <p style="margin-top:14px;">
+      <label>
+        <input type="radio" name="mode" value="remplacer">
+        Remplacer le contenu d'un dossier existant
+      </label><br>
+      <span class="muted">
+        À utiliser au retour d'une intervention à distance : les exercices et
+        les saisies actuels du dossier choisi sont effacés et remplacés par
+        ceux de l'archive. Le dossier, ses utilisateurs rattachés et ses accès
+        sont conservés.
+      </span>
+    </p>
+    <p style="margin-left:24px;">
+      <label>Dossier à remplacer<br>
+        <select name="client_cible">
+          <option value="">— choisir —</option>
+          {% for c in clients %}
+          <option value="{{ c['id'] }}">{{ c['raison_sociale'] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </p>
+    <p style="margin-left:24px;">
+      <label>
+        <input type="checkbox" name="confirme" value="oui">
+        Je confirme l'effacement des données actuelles du dossier choisi.
+      </label>
+    </p>
+
+    <p style="margin-top:18px;"><button class="btn" type="submit">Importer</button></p>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}

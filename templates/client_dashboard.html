@@ -6,6 +6,7 @@
   {% if user['role'] == 'admin' %}<a href="/admin">← Retour au cabinet</a>{% endif %}
   {% if user['role'] in ('admin', 'gestionnaire') %}
   &nbsp;·&nbsp;<a href="/client/{{ client['id'] }}/users">Gérer les utilisateurs</a>
+  &nbsp;·&nbsp;<a href="/client/{{ client['id'] }}/dossier.tafiroha">Exporter le dossier complet</a>
   {% endif %}
 </div>
 <div class="card">

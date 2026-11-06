@@ -27,6 +27,7 @@ import db
 import calc_engine as ce
 import xml_engine as xe
 import revision
+import dossier
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 jinja_env = Environment(loader=FileSystemLoader(os.path.join(BASE_DIR, "templates")))
@@ -6886,6 +6887,127 @@ def view_import_suppl4(req, conn, user, exercice_id):
     return redirect("/exercice/%d#suppl4" % exercice_id)
 
 
+# ------------------------------------------------- dossier client (export / import) --
+
+def _champs_multipart(req):
+    """Champs texte d'un formulaire multipart (req.form reste vide dans ce
+    cas). Fonction locale à l'import de dossier : ne change rien ailleurs."""
+    champs = {}
+    body = getattr(req, "_raw_body", b"") or b""
+    ctype = req.environ.get("CONTENT_TYPE", "")
+    if "boundary=" not in ctype:
+        return champs
+    boundary = ctype.split("boundary=")[-1].strip().strip('"').encode()
+    for part in body.split(b"--" + boundary):
+        if b"filename=" in part:
+            continue
+        entete, _, contenu = part.partition(b"\r\n\r\n")
+        marque = entete.find(b'name="')
+        if marque == -1:
+            continue
+        fin = entete.find(b'"', marque + 6)
+        if fin == -1:
+            continue
+        nom = entete[marque + 6:fin].decode("utf-8", "replace")
+        champs[nom] = contenu.rstrip(b"\r\n-").decode("utf-8", "replace")
+    return champs
+
+
+def _origine_dossier(conn):
+    """Nom de l'installation d'origine, inscrit dans le manifeste."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(clients)")]
+    return "TAFIROHA en ligne" if "created_by" in cols else "TAFIROHA bureau"
+
+
+def view_dossier_export(req, conn, user, client_id):
+    """Télécharge la totalité d'un dossier client dans une archive .tafiroha.
+
+    Lecture seule : aucune écriture en base. Accessible à qui peut déjà
+    consulter le client."""
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
+    if not client:
+        return Response("Client introuvable", status="404 Not Found")
+    if not user_can_access_client(user, client, conn):
+        return Response("Accès refusé", status="403 Forbidden")
+    try:
+        nom, octets = dossier.exporter(conn, client_id, _origine_dossier(conn))
+    except ValueError as exc:
+        return Response(str(exc), status="400 Bad Request")
+    return Response(
+        octets,
+        content_type="application/octet-stream",
+        headers=[("Content-Disposition", 'attachment; filename="%s"' % nom)],
+    )
+
+
+def view_dossier_import(req, conn, user):
+    """Importe une archive .tafiroha : nouveau dossier, ou remplacement du
+    contenu d'un dossier existant (ses utilisateurs rattachés sont conservés).
+
+    Réservée aux rôles admin et gestionnaire."""
+    if user["role"] not in ("admin", "gestionnaire"):
+        return Response("Accès refusé", status="403 Forbidden")
+
+    clients = _clients_visibles(conn, user)
+    ctx = {"user": user, "clients": clients}
+
+    if req.method != "POST":
+        return Response(render("dossier_import.html", **ctx))
+
+    octets = None
+    if req.environ.get("CONTENT_TYPE", "").startswith("multipart/form-data"):
+        octets = _extract_multipart_file(req, "fichier_dossier")
+    if not octets:
+        ctx["erreur"] = "Aucun fichier reçu. Choisissez une archive %s." % dossier.EXTENSION
+        return Response(render("dossier_import.html", **ctx))
+
+    form = _champs_multipart(req)
+    mode = (form.get("mode") or "nouveau").strip()
+    cible = (form.get("client_cible") or "").strip()
+    nouveau_nom = (form.get("raison_sociale") or "").strip()
+
+    # Lecture seule d'abord : on montre ce que contient l'archive avant
+    # d'écrire quoi que ce soit.
+    try:
+        manifest, _ = dossier.lire(octets)
+    except ValueError as exc:
+        ctx["erreur"] = str(exc)
+        return Response(render("dossier_import.html", **ctx))
+
+    if mode == "remplacer":
+        if not cible or not cible.isdigit() or not _client_visible(conn, user, int(cible)):
+            ctx["erreur"] = "Choisissez le dossier existant à remplacer."
+            ctx["manifest"] = manifest
+            return Response(render("dossier_import.html", **ctx))
+        if (form.get("confirme") or "") != "oui":
+            ctx["erreur"] = (
+                "Le remplacement efface les données actuelles du dossier choisi. "
+                "Cochez la case de confirmation pour continuer."
+            )
+            ctx["manifest"] = manifest
+            return Response(render("dossier_import.html", **ctx))
+
+    try:
+        res = dossier.importer(
+            conn, octets, user["id"], mode=mode,
+            client_cible=cible or None, raison_sociale=nouveau_nom or None,
+        )
+    except ValueError as exc:
+        ctx["erreur"] = str(exc)
+        ctx["manifest"] = manifest
+        return Response(render("dossier_import.html", **ctx))
+    except Exception as exc:
+        ctx["erreur"] = "L'import a échoué, aucune donnée n'a été modifiée (%s)." % exc
+        ctx["manifest"] = manifest
+        return Response(render("dossier_import.html", **ctx))
+
+    ctx["resultat"] = res
+    ctx["manifest"] = res["manifest"]
+    ctx["libelles"] = dossier.LIBELLES
+    ctx["clients"] = _clients_visibles(conn, user)
+    return Response(render("dossier_import.html", **ctx))
+
+
 def dispatch(req, conn):
     path = req.path.rstrip("/") or "/"
 
@@ -6956,6 +7078,13 @@ def dispatch(req, conn):
     if path.startswith("/client/") and path.endswith("/users"):
         client_id = int(path.split("/")[2])
         return view_client_users(req, conn, user, client_id)
+
+    if path == "/dossier/import":
+        return view_dossier_import(req, conn, user)
+
+    if path.startswith("/client/") and path.endswith("/dossier.tafiroha"):
+        client_id = int(path.split("/")[2])
+        return view_dossier_export(req, conn, user, client_id)
 
     if path.startswith("/client/") and path.endswith("/exercices/new"):
         client_id = int(path.split("/")[2])
