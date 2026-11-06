@@ -449,6 +449,152 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
     return notes_texte, variables
 
 
+# ── Lignes de detail ajoutables ─────────────────────────────────────────────
+#
+# Les tableaux munis d'un bouton "+ Ajouter une ligne" n'ont pas un nombre de
+# lignes connu d'avance : l'application range leurs valeurs sous des cles
+# "<prefixe>_<colonne>_<rang>" et leurs libelles sous "<prefixe>_<rang>", et
+# non sous une coordonnee de cellule. Le classeur, lui, attend ces lignes a
+# partir d'une ligne fixe, donnee par la feuille "champs variables" du modele
+# officiel. Sans la traduction ci-dessous, ces lignes n'existaient ni dans
+# l'export XML ni dans l'export Excel : l'information etait perdue.
+#
+#   (feuille, prefixe valeurs, prefixe libelle, colonne du libelle,
+#    premiere ligne, lignes imposees)
+TABLEAUX_DYNAMIQUES = (
+    # Les trois rubriques de l'etat annexe occupent des lignes fixes et non
+# contigues dans le classeur (D18/F18, D19/F19 puis D23/F23) : la DGI les
+# connait sous SUPPL1A1 pour les deux premieres et SUPPL1A2 pour la
+# troisieme. D'ou les lignes imposees plutot qu'une ligne de depart.
+    ("SUPPL1",   "AX",     "desig_ax",     "A", None, (18, 19, 23)),
+    ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None),
+    ("SUPPL2",   "D",      "desig",        "A", 9,    None),
+    ("SUPPL4",   "D",      "desig",        "A", 10,   None),
+    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None),
+    ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None),
+    ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None),
+    ("NOTE 32",  "D",      "desig",        "A", 11,   None),
+    ("NOTE 33",  "D",      "desig",        "A", 12,   None),
+)
+
+# Colonnes saisies a part, en plus des colonnes de valeurs du tableau.
+COLONNES_ANNEXES = {
+    ("SUPPL1", "PR"): (("unite_pr", "J"),),   # unite de quantite choisie
+}
+
+
+def _ligne_dynamique(premiere, imposees, rang):
+    """Ligne du classeur correspondant au rang d'une ligne de detail."""
+    if imposees:
+        return imposees[rang] if 0 <= rang < len(imposees) else None
+    return premiere + rang
+
+
+def _carte_cellules():
+    """Correspondance codes DGI / cellules, chargee par l'application.
+
+    Import tardif : app importe deja ce module, l'import en tete de fichier
+    creerait un cycle."""
+    try:
+        import app
+        return app.cellules_liasse()
+    except Exception:
+        return {}
+
+
+def _pourcentages():
+    """Cellules et colonnes du classeur au format pourcentage.
+
+    Une saisie est toujours exprimee en points de pourcentage dans
+    l'application : l'utilisateur tape 20 pour 20 %. Le classeur et la DGI
+    attendent la fraction (0,2), comme le fait deja le pourcentage calcule de
+    la FICHE R2. La conversion se fait donc au moment de l'export."""
+    carte = _carte_cellules() or {}
+    return (set(carte.get("pourcent_cellules") or ()),
+            set(carte.get("pourcent_colonnes") or ()))
+
+
+def _en_fraction(onglet, coord, valeur, cellules, colonnes):
+    """Convertit une saisie en points de pourcentage vers une fraction."""
+    colonne = "".join(c for c in str(coord) if c.isalpha())
+    if ("%s!%s" % (onglet, coord)) not in cellules and \
+       ("%s!%s" % (onglet, colonne)) not in colonnes:
+        return valeur
+    try:
+        return float(valeur) / 100.0
+    except (TypeError, ValueError):
+        return valeur
+
+
+def preparer_saisies(note3: dict, ntexte: dict):
+    """Rend les saisies exploitables par les deux exports.
+
+    1. Les lignes de detail ajoutables recoivent leur vraie coordonnee de
+       cellule, pour que l'export XML et l'export Excel les voient.
+    2. Les taux saisis en points de pourcentage deviennent des fractions sur
+       les cellules que le classeur presente au format pourcentage.
+
+    Les dictionnaires d'origine ne sont pas modifies : le moteur de calcul
+    continue de lire les valeurs telles qu'elles sont en base (la NOTE 37
+    applique D36/100 dans sa formule)."""
+    cellules, colonnes = _pourcentages()
+    n3 = dict((f, dict(v)) for f, v in (note3 or {}).items())
+    nt = dict((f, dict(v)) for f, v in (ntexte or {}).items())
+
+    # NOTE 37 D36 : le taux d'imposition est saisi sur le Sommaire de
+    # l'application (le classeur, lui, lit =Sommaire!M43). Sans cette reprise,
+    # la case "Taux" de la NOTE 37 part vide alors qu'elle est renseignee.
+    taux = (nt.get("SOMMAIRE", {}) or {}).get("taux_bic_bnc", "")
+    if str(taux).strip() and not n3.get("NOTE 37", {}).get("D36"):
+        try:
+            t = float(str(taux).replace("%", "").replace(",", ".").strip())
+        except ValueError:
+            t = 0.0
+        if 0 < t < 1:
+            t *= 100.0
+        if t:
+            n3.setdefault("NOTE 37", {})["D36"] = t
+
+    for feuille, prefixe, pref_lib, col_lib, premiere, imposees in TABLEAUX_DYNAMIQUES:
+        raw = n3.get(feuille, {})
+        txt = nt.get(feuille, {})
+        if not raw and not txt:
+            continue
+        motif = re.compile(r"^%s_([A-Z]{1,2})_(\d+)$" % re.escape(prefixe))
+        for source, cible in ((raw, raw), (txt, txt)):
+            for cle, valeur in list(source.items()):
+                m = motif.match(str(cle))
+                if not m or valeur in (None, ""):
+                    continue
+                ligne = _ligne_dynamique(premiere, imposees, int(m.group(2)))
+                if ligne:
+                    cible["%s%d" % (m.group(1), ligne)] = valeur
+        paires = [(pref_lib, col_lib)]
+        paires.extend(COLONNES_ANNEXES.get((feuille, prefixe), ()))
+        for pref, col in paires:
+            motif_lib = re.compile(r"^%s_(\d+)$" % re.escape(pref))
+            for cle, valeur in list(txt.items()):
+                m = motif_lib.match(str(cle))
+                if not m or valeur in (None, ""):
+                    continue
+                ligne = _ligne_dynamique(premiere, imposees, int(m.group(1)))
+                if ligne:
+                    txt["%s%d" % (col, ligne)] = valeur
+        if raw:
+            n3[feuille] = raw
+        if txt:
+            nt[feuille] = txt
+
+    if cellules or colonnes:
+        for feuille, valeurs in n3.items():
+            for coord in list(valeurs):
+                if re.match(r"^[A-Z]{1,3}[0-9]{1,5}$", str(coord)):
+                    valeurs[coord] = _en_fraction(
+                        feuille, coord, valeurs[coord], cellules, colonnes)
+
+    return n3, nt
+
+
 # ── Lecture de la valeur d'une cellule ──────────────────────────────────────
 
 def _get_value(computed: dict, note3: dict, ntexte: dict, onglet: str, row: int, col: int):
@@ -647,6 +793,12 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
         manual=manual_for_engine,
         row_range=(1, 200),
     ) if balN else {}
+
+    # Les lignes de detail ajoutables prennent leur coordonnee de cellule et
+    # les taux saisis passent en fraction. Volontairement APRES le calcul :
+    # le moteur doit continuer de lire les valeurs telles qu'elles sont en
+    # base (la NOTE 37 applique elle-meme D36/100 dans sa formule).
+    note3, ntexte = preparer_saisies(note3, ntexte)
 
     # Vue consolidée : computed[onglet][coord] = valeur
     computed: dict = dict(notes_cache)

@@ -6444,76 +6444,7 @@ def cellules_liasse():
     return _CELLULES_LIASSE
 
 
-# Tableaux a lignes de detail dynamiques ("+ Ajouter une ligne"). Le nombre
-# de lignes n'etant pas connu d'avance, l'application range leurs valeurs sous
-# des cles "<prefixe>_<colonne>_<rang>" et leurs libelles sous
-# "<prefixe_libelle>_<rang>", et non sous une coordonnee de cellule. Le
-# classeur, lui, attend ces lignes a partir d'une ligne fixe, indiquee par la
-# feuille "champs variables" du modele officiel.
-#   (feuille, prefixe valeurs, prefixe libelle, colonne du libelle,
-#    premiere ligne, lignes imposees)
-EXPORT_TABLEAUX_DYNAMIQUES = (
-    ("SUPPL1",   "AX",     "desig_ax",     "A", None, (17, 19, 23)),
-    ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None),
-    ("SUPPL2",   "D",      "desig",        "A", 9,    None),
-    ("SUPPL4",   "D",      "desig",        "A", 10,   None),
-    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None),
-    ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None),
-    ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None),
-    ("NOTE 32",  "D",      "desig",        "A", 11,   None),
-    ("NOTE 33",  "D",      "desig",        "A", 12,   None),
-)
-# SUPPL1, tableau des produits : la colonne J porte l'unite de quantite,
-# saisie a part (texte "unite_pr_<rang>").
-EXPORT_COLONNES_ANNEXES = {
-    ("SUPPL1", "PR"): (("unite_pr", "J"),),
-}
-
-
-def _ligne_dynamique(premiere, imposees, rang):
-    """Ligne du classeur correspondant au rang d'une ligne de detail."""
-    if imposees:
-        return imposees[rang] if rang < len(imposees) else None
-    return premiere + rang
-
-
-def _remplir_tableaux_dynamiques(wb, note3_manual, note_texte, calculees):
-    """Reporte dans le classeur les lignes de detail ajoutables."""
-    import re as _re
-    n = 0
-    for feuille, prefixe, pref_lib, col_lib, premiere, imposees in EXPORT_TABLEAUX_DYNAMIQUES:
-        if feuille in calculees or feuille not in wb.sheetnames:
-            continue
-        raw = (note3_manual or {}).get(feuille, {}) or {}
-        txt = (note_texte or {}).get(feuille, {}) or {}
-        ws = wb[feuille]
-        motif = _re.compile(r"^%s_([A-Z]{1,2})_(\d+)$" % _re.escape(prefixe))
-        for source in (raw, txt):
-            for cle, valeur in source.items():
-                m = motif.match(str(cle))
-                if not m or valeur in (None, ""):
-                    continue
-                ligne = _ligne_dynamique(premiere, imposees, int(m.group(2)))
-                if ligne and _ecrire_cellule(ws, "%s%d" % (m.group(1), ligne), valeur):
-                    n += 1
-        motif_lib = _re.compile(r"^%s_(\d+)$" % _re.escape(pref_lib))
-        for cle, valeur in txt.items():
-            m = motif_lib.match(str(cle))
-            if not m or valeur in (None, ""):
-                continue
-            ligne = _ligne_dynamique(premiere, imposees, int(m.group(1)))
-            if ligne and _ecrire_cellule(ws, "%s%d" % (col_lib, ligne), valeur):
-                n += 1
-        for pref_sup, col_sup in EXPORT_COLONNES_ANNEXES.get((feuille, prefixe), ()):
-            motif_sup = _re.compile(r"^%s_(\d+)$" % _re.escape(pref_sup))
-            for cle, valeur in txt.items():
-                m = motif_sup.match(str(cle))
-                if not m or valeur in (None, ""):
-                    continue
-                ligne = _ligne_dynamique(premiere, imposees, int(m.group(1)))
-                if ligne and _ecrire_cellule(ws, "%s%d" % (col_sup, ligne), valeur):
-                    n += 1
-    return n
+_COORD_CELLULE = re.compile(r"^[A-Z]{1,3}[0-9]{1,5}$")
 
 
 def _ecrire_cellule(ws, coord, valeur):
@@ -6541,18 +6472,33 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
     carte = cellules_liasse()
     n = 0
 
-    # 1. Valeurs numeriques : la coordonnee est deja celle du classeur.
-    for feuille, cellules in (note3_manual or {}).items():
-        if feuille in calculees or feuille not in wb.sheetnames:
-            continue
-        ws = wb[feuille]
-        for coord, valeur in cellules.items():
-            if str(coord).startswith("_N_") or valeur in (None, ""):
-                continue
-            if _ecrire_cellule(ws, coord, valeur):
-                n += 1
+    # Les lignes de detail ajoutables recoivent leur coordonnee de cellule et
+    # les taux saisis passent en fraction : meme preparation que pour l'export
+    # XML, pour que les deux fichiers portent exactement les memes valeurs.
+    note3_manual, note_texte = xe.preparer_saisies(note3_manual, note_texte)
 
-    # 2. Zones de texte : passage par les codes de champ de la DGI.
+    def _ecrivable(feuille, coord):
+        """Sur une feuille calculee, on n'ecrit que les cases de saisie : une
+        cellule porteuse d'une formule garde la valeur du moteur."""
+        if feuille not in wb.sheetnames or not _COORD_CELLULE.match(str(coord)):
+            return False
+        if feuille not in calculees:
+            return True
+        brut = ce.SHEETS_RAW.get(feuille, {}).get(coord)
+        return not (isinstance(brut, str) and brut.startswith("="))
+
+    # 1. Valeurs numeriques : la coordonnee est deja celle du classeur.
+    # 2. Textes deja rattaches a une cellule (libelles des lignes de detail
+    #    ajoutables, colonnes texte de la NOTE 13...).
+    for source in ((note3_manual or {}), (note_texte or {})):
+        for feuille, cellules in source.items():
+            for coord, valeur in cellules.items():
+                if valeur in (None, "") or not _ecrivable(feuille, coord):
+                    continue
+                if _ecrire_cellule(wb[feuille], coord, valeur):
+                    n += 1
+
+    # 3. Autres zones de texte : passage par les codes de champ de la DGI.
     try:
         fixes, variables = xe._fiches_identification(
             dict(client) if client else {}, dict(exo) if exo else {},
@@ -6581,9 +6527,6 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
         coord = "%s%d" % (colonne, premiere + max(0, int(ligne) - 1))
         if _ecrire_cellule(wb[feuille], coord, valeur):
             n += 1
-
-    # 4. Lignes de detail ajoutables (tableaux a nombre de lignes variable).
-    n += _remplir_tableaux_dynamiques(wb, note3_manual, note_texte, calculees)
 
     return n
 
