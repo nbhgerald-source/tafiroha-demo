@@ -6414,6 +6414,57 @@ def handle_upload(req, conn, exercice_id):
     return "%d lignes (%s) importées pour la période %s." % (len(rows), label, periode)
 
 
+# Feuilles que l'application calcule directement en Python, parce que leurs
+# formules n'ont pas pu etre extraites du classeur (references croisees,
+# formules matricielles, plages nommees) : COMP-CHARGES, NOTE 31 et NOTE 34.
+# Leurs valeurs n'etaient connues que de l'ecran et du classeur recalcule ;
+# le fichier XML, lui, partait vide sur ces trois etats. La passerelle
+# ci-dessous les transforme en caches de cellules, comme les feuilles du
+# moteur, pour que l'export EDI porte exactement ce qui est affiche.
+FEUILLES_PYTHON = ("COMP-CHARGES", "NOTE 31", "NOTE 34")
+
+
+def caches_feuilles_python(balN, balN1, tftn, tftn1, manual, bilan, resultat, tft):
+    """Caches {feuille: {coordonnee: valeur}} des feuilles calculees en Python."""
+    caches = {}
+    if not balN:
+        return caches
+
+    # COMP-CHARGES : G = exercice N, H = N-1, I = variation en valeur, J = %
+    try:
+        for r in (compute_comp_charges(balN, balN1) or {}).get("rows", []):
+            cible = caches.setdefault("COMP-CHARGES", {})
+            cible["G%d" % r["row"]] = r.get("g")
+            cible["H%d" % r["row"]] = r.get("h")
+            cible["I%d" % r["row"]] = r.get("var_valeur")
+            if r.get("var_pct") not in (None, ""):
+                cible["J%d" % r["row"]] = r["var_pct"]
+    except Exception:
+        pass
+
+    # NOTE 31 : colonnes G a K = exercices N a N-4
+    try:
+        for r in compute_note31(balN, balN1, manual, resultat) or []:
+            cible = caches.setdefault("NOTE 31", {})
+            for col, val in (r.get("vals") or {}).items():
+                if val not in (None, ""):
+                    cible["%s%d" % (col, r["row"])] = val
+    except Exception:
+        pass
+
+    # NOTE 34 : F = annee N, G = annee N-1, H = variation
+    try:
+        for r in compute_note34(bilan, resultat, tft, balN, balN1, tftn, tftn1) or []:
+            cible = caches.setdefault("NOTE 34", {})
+            for col in ("F", "G", "H"):
+                if r.get(col) not in (None, ""):
+                    cible["%s%d" % (col, r["row"])] = r[col]
+    except Exception:
+        pass
+
+    return caches
+
+
 EXPORT_TEMPLATE_PATH = os.path.join(STATIC_DIR, "export_template.xlsx")
 
 # Feuilles du classeur modele qui ne font pas partie de la liasse : feuilles
@@ -7170,7 +7221,21 @@ def view_export_xml(req, conn, user, exercice_id):
             return Response(render(
                 "revision_blocage.html", user=user, client=client, exo=exo, nb=n))
 
-    xml_bytes = xe.generate_xml(conn, exercice_id, dict(client), dict(exo))
+    # Les trois feuilles calculees en Python (COMP-CHARGES, NOTE 31, NOTE 34)
+    # sont fournies au generateur : elles ne sont pas dans le moteur de
+    # formules et partaient vides sur e-impots.
+    balN = load_balance(conn, exercice_id, "N")
+    balN1 = load_balance(conn, exercice_id, "N1")
+    tftn = load_tft_detail(conn, exercice_id, "N")
+    tftn1 = load_tft_detail(conn, exercice_id, "N1")
+    manual = load_note3_manual(conn, exercice_id)
+    bilan = ce.compute_sheet("BILAN", balN, balN1) if balN else {}
+    resultat = ce.compute_sheet("RESULTAT", balN, balN1) if balN else {}
+    tft = ce.compute_sheet("TFT", balN, balN1, tftn, tftn1) if balN else {}
+    caches = caches_feuilles_python(balN, balN1, tftn, tftn1, manual, bilan, resultat, tft)
+
+    xml_bytes = xe.generate_xml(conn, exercice_id, dict(client), dict(exo),
+                                caches_python=caches)
     filename  = xe.xml_filename(dict(client), dict(exo))
     return Response(
         xml_bytes,

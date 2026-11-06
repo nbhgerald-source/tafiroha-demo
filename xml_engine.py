@@ -778,7 +778,8 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
 
 # ── Lecture de la valeur d'une cellule ──────────────────────────────────────
 
-def _get_value(computed: dict, note3: dict, ntexte: dict, onglet: str, row: int, col: int):
+def _get_value(computed: dict, note3: dict, ntexte: dict, onglet: str, row: int, col: int,
+               directes=()):
     """
     Retourne (valeur, est_texte).
 
@@ -803,6 +804,14 @@ def _get_value(computed: dict, note3: dict, ntexte: dict, onglet: str, row: int,
         attend sous forme de liste de valeurs — d'où « la valeur ne fait pas
         partie de celles autorisées »."""
         return ce.SHEETS_RAW.get(feuille, {}).get(c) is not None
+
+    # Feuilles calculees directement en Python (COMP-CHARGES, NOTE 31,
+    # NOTE 34) : leur cache fait foi cellule par cellule, le classeur n'ayant
+    # pas de formule exploitable a comparer.
+    if onglet in directes:
+        v = computed.get(onglet, {}).get(coord)
+        if v is not None:
+            return v, False
 
     if onglet in ("ACTIF", "PASSIF"):
         c = _num_to_col(col + (5 if onglet == "PASSIF" else 0)) + str(row)
@@ -883,7 +892,8 @@ def _esc(s) -> str:
 
 # ── Génération XML principale ────────────────────────────────────────────────
 
-def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str = "N") -> bytes:
+def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str = "N",
+                 caches_python=None) -> bytes:
     """
     Génère le XML EDI (bytes UTF-8) pour l'exercice donné.
 
@@ -979,6 +989,8 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
     # les taux saisis passent en fraction. Volontairement APRES le calcul :
     # le moteur doit continuer de lire les valeurs telles qu'elles sont en
     # base (la NOTE 37 applique elle-meme D36/100 dans sa formule).
+    directes = tuple((caches_python or {}).keys())
+
     plan = plan_tableaux(note3, ntexte)
     note3, ntexte = preparer_saisies(note3, ntexte, plan)
     # Les tableaux a lignes ajoutables peuvent en compter plus que la plage
@@ -995,6 +1007,11 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
     computed["BILAN"]    = bilan_cache
     computed["RESULTAT"] = resultat_cache
     computed["TFT"]      = tft_cache
+    # Feuilles calculees en Python par l'application (COMP-CHARGES, NOTE 31,
+    # NOTE 34) : elles rejoignent la vue consolidee, sans quoi ces trois
+    # etats partaient vides sur e-impots.
+    for feuille, cache in (caches_python or {}).items():
+        computed[feuille] = dict(cache)
 
     # 3. Construction du XML ─────────────────────────────────────────────────
 
@@ -1028,7 +1045,7 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
             row = ligne_decalee(c["premiere_row"] + c["pos_ligne"] - 1,
                                 decal_feuilles.get(c["onglet"]))
             col = c["premiere_col"] + c["pos_col"] - 1
-            v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)
+            v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col, directes)
         fv = _format_value(v, is_text)
         if fv is not None:
             out.append("    <champTableauFixe>")
@@ -1085,7 +1102,7 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
                         v, is_text = (note3.get(c["onglet"]) or {}).get(coord), False
                 else:
                     col = c["premiere_col"] + c["pos_col"] - 1
-                    v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col)
+                    v, is_text = _get_value(computed, note3, ntexte, c["onglet"], row, col, directes)
                 fv = _format_value(v, is_text)
                 if fv is not None:
                     out.append("    <champTableauVariable>")
