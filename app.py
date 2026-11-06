@@ -11,6 +11,7 @@ Application WSGI pure Python (stdlib + Jinja2) :
   d'origine (voir calc_engine.py), exactement comme la feuille
   "TABLE DE CONVERSION" du classeur.
 """
+import copy
 import csv
 import json
 import io
@@ -6557,6 +6558,102 @@ def cellules_liasse():
 _COORD_CELLULE = re.compile(r"^[A-Z]{1,3}[0-9]{1,5}$")
 
 
+def _formule_decalee(formule, ligne_source, ligne_cible, colonne):
+    """Recopie une formule d'une ligne a une autre, references ajustees."""
+    if ligne_cible == ligne_source:
+        return formule
+    try:
+        from openpyxl.formula.translate import Translator
+        return Translator(formule, origin="%s%d" % (colonne, ligne_source)) \
+            .translate_formula("%s%d" % (colonne, ligne_cible))
+    except Exception:
+        return formule
+
+
+def _etendre_tableaux(wb, plan):
+    """Insere dans le classeur les lignes de detail supplementaires.
+
+    Le modele ne reserve qu'une ou deux lignes par tableau ajoutable, le total
+    venant juste en dessous. Un inventaire d'immobilisations en compte souvent
+    plusieurs dizaines : sans insertion, les lignes ecraseraient le total et
+    la suite de la feuille. Les totaux du classeur sont des sommes dynamiques
+    (INDIRECT/ADDRESS) justement prevues pour suivre l'insertion.
+
+    Les entrees du plan sont traitees dans l'ordre, leurs lignes de depart
+    tenant deja compte des insertions faites au-dessus sur la meme feuille."""
+    total = 0
+    for entree in plan:
+        n = entree.get("a_inserer") or 0
+        feuille = entree["feuille"]
+        if n <= 0 or feuille not in wb.sheetnames or not entree.get("base"):
+            continue
+        ws = wb[feuille]
+        base = entree["base"]
+        depart = base + (entree["lignes"] - n)
+        nb_col = ws.max_column
+        fusions_modele = [(r.min_col, r.max_col) for r in ws.merged_cells.ranges
+                          if r.min_row == base and r.max_row == base and r.max_col > r.min_col]
+        anciennes = [str(r) for r in ws.merged_cells.ranges]
+        styles = [copy.copy(ws.cell(row=base, column=c)._style)
+                  for c in range(1, nb_col + 1)]
+        # Formules propres a une ligne de detail (total de la ligne, valeur
+        # residuelle, plus ou moins-value) : elles doivent suivre chaque ligne
+        # ajoutee, sinon le total de la colonne ne somme qu'une seule ligne.
+        formules = {}
+        for c in range(1, nb_col + 1):
+            v = ws.cell(row=base, column=c).value
+            v = getattr(v, "text", v)
+            if isinstance(v, str) and v.startswith("="):
+                formules[c] = v
+        hauteur = ws.row_dimensions[base].height
+
+        ws.insert_rows(depart, n)
+
+        # openpyxl ne deplace pas les cellules fusionnees lors d'une
+        # insertion : sans cette reprise, la fusion du total resterait sur la
+        # premiere ligne inseree et en bloquerait l'ecriture.
+        from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.cell_range import CellRange
+        for ref in anciennes:
+            try:
+                ws.unmerge_cells(ref)
+            except Exception:
+                pass
+        nouvelles = []
+        for ref in anciennes:
+            rng = CellRange(ref)
+            if rng.min_row >= depart:
+                rng.shift(row_shift=n)
+            elif rng.max_row >= depart:
+                rng.expand(down=n)
+            nouvelles.append(str(rng))
+        for r in range(depart, depart + n):
+            for c1, c2 in fusions_modele:
+                nouvelles.append("%s%d:%s%d" % (get_column_letter(c1), r,
+                                                get_column_letter(c2), r))
+        for ref in nouvelles:
+            try:
+                ws.merge_cells(ref)
+            except Exception:
+                pass
+
+        # Les lignes inserees sont nues : on leur rend le format de la
+        # premiere ligne de detail (bordures, alignements, formats de nombre).
+        for r in range(depart, depart + n):
+            if hauteur:
+                ws.row_dimensions[r].height = hauteur
+            for c in range(1, nb_col + 1):
+                cible = ws.cell(row=r, column=c)
+                if cible.__class__.__name__ == "MergedCell":
+                    continue
+                cible._style = copy.copy(styles[c - 1])
+                if c in formules:
+                    cible.value = _formule_decalee(
+                        formules[c], base, r, get_column_letter(c))
+        total += n
+    return total
+
+
 def _ecrire_cellule(ws, coord, valeur):
     """Comme _set_cell_safe, mais indique si l'ecriture a eu lieu."""
     try:
@@ -6585,7 +6682,9 @@ def _remplir_feuilles_saisies(wb, client, exo, note3_manual, note_texte, calcule
     # Les lignes de detail ajoutables recoivent leur coordonnee de cellule et
     # les taux saisis passent en fraction : meme preparation que pour l'export
     # XML, pour que les deux fichiers portent exactement les memes valeurs.
-    note3_manual, note_texte = xe.preparer_saisies(note3_manual, note_texte)
+    plan = xe.plan_tableaux(note3_manual, note_texte)
+    _etendre_tableaux(wb, plan)
+    note3_manual, note_texte = xe.preparer_saisies(note3_manual, note_texte, plan)
 
     def _ecrivable(feuille, coord):
         """Sur une feuille calculee, on n'ecrit que les cases de saisie : une

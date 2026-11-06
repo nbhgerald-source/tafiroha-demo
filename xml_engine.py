@@ -459,28 +459,94 @@ def _fiches_identification(client: dict, exo: dict, ntexte: dict, note3: dict):
 # officiel. Sans la traduction ci-dessous, ces lignes n'existaient ni dans
 # l'export XML ni dans l'export Excel : l'information etait perdue.
 #
+# Le classeur ne reserve qu'une ou deux lignes de detail par tableau : le
+# total qui suit est une somme dynamique (INDIRECT/ADDRESS) prevue pour
+# tolerer l'insertion de lignes. Quand la saisie en compte davantage — un
+# inventaire d'immobilisations en contient couramment plusieurs dizaines — il
+# faut donc inserer les lignes manquantes dans la feuille, et non ecraser le
+# total et ce qui le suit.
+#
 #   (feuille, prefixe valeurs, prefixe libelle, colonne du libelle,
-#    premiere ligne, lignes imposees)
+#    premiere ligne, lignes imposees, lignes reservees par le modele)
 TABLEAUX_DYNAMIQUES = (
+    ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None,         52),
     # Les trois rubriques de l'etat annexe occupent des lignes fixes et non
-# contigues dans le classeur (D18/F18, D19/F19 puis D23/F23) : la DGI les
-# connait sous SUPPL1A1 pour les deux premieres et SUPPL1A2 pour la
-# troisieme. D'ou les lignes imposees plutot qu'une ligne de depart.
-    ("SUPPL1",   "AX",     "desig_ax",     "A", None, (18, 19, 23)),
-    ("SUPPL1",   "PR",     "desig_pr",     "I", 13,   None),
-    ("SUPPL2",   "D",      "desig",        "A", 9,    None),
-    ("SUPPL4",   "D",      "desig",        "A", 10,   None),
-    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None),
-    ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None),
-    ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None),
-    ("NOTE 32",  "D",      "desig",        "A", 11,   None),
-    ("NOTE 33",  "D",      "desig",        "A", 12,   None),
+    # contigues dans le classeur (D18/F18, D19/F19 puis D23/F23) : la DGI les
+    # connait sous SUPPL1A1 pour les deux premieres et SUPPL1A2 pour la
+    # troisieme. D'ou les lignes imposees plutot qu'une ligne de depart.
+    ("SUPPL1",   "AX",     "desig_ax",     "A", None, (18, 19, 23), 0),
+    ("SUPPL2",   "D",      "desig",        "A", 9,    None,         1),
+    # SUPPL4 : colonne A = numero de compte, B = designation, F = date de
+    # mise en service — exactement les colonnes du fichier d'inventaire
+    # importe. La designation n'est donc pas en colonne A ici.
+    ("SUPPL4",   "D",      "desig",        "B", 10,   None,         1),
+    ("NOTE 13",  "assoc",  "assoc_nom",    "A", 10,   None,         2),
+    ("NOTE 16C", "ACTIF",  "actif_desig",  "A", 11,   None,         1),
+    ("NOTE 16C", "PASSIF", "passif_desig", "A", 14,   None,         1),
+    ("NOTE 32",  "D",      "desig",        "A", 11,   None,         2),
+    ("NOTE 33",  "D",      "desig",        "A", 12,   None,         2),
 )
 
 # Colonnes saisies a part, en plus des colonnes de valeurs du tableau.
 COLONNES_ANNEXES = {
-    ("SUPPL1", "PR"): (("unite_pr", "J"),),   # unite de quantite choisie
+    ("SUPPL1", "PR"): (("unite_pr", "J"),),           # unite de quantite choisie
+    ("SUPPL4", "D"):  (("compte", "A"), ("date", "F")),  # compte et mise en service
 }
+
+
+def _nb_lignes_saisies(note3, ntexte, feuille, prefixe, prefixes_libelle):
+    """Nombre de lignes de detail reellement saisies sur un tableau."""
+    maxi = -1
+    motif = re.compile(r"^%s_[A-Z]{1,2}_(\d+)$" % re.escape(prefixe))
+    for source in ((note3 or {}).get(feuille) or {}, (ntexte or {}).get(feuille) or {}):
+        for cle, valeur in source.items():
+            if valeur in (None, ""):
+                continue
+            m = motif.match(str(cle))
+            if m:
+                maxi = max(maxi, int(m.group(1)))
+    txt = (ntexte or {}).get(feuille) or {}
+    for pref in prefixes_libelle:
+        mot = re.compile(r"^%s_(\d+)$" % re.escape(pref))
+        for cle, valeur in txt.items():
+            if valeur in (None, ""):
+                continue
+            m = mot.match(str(cle))
+            if m:
+                maxi = max(maxi, int(m.group(1)))
+    return maxi + 1
+
+
+def plan_tableaux(note3, ntexte):
+    """Etat de chaque tableau a lignes ajoutables pour cet exercice.
+
+    Retourne une liste de dictionnaires :
+        feuille, prefixe, prefixe_libelle, colonne_libelle, annexes,
+        premiere_modele : ligne de depart dans le classeur d'origine,
+        base            : ligne de depart apres insertion des lignes
+                          supplementaires des tableaux situes au-dessus,
+        imposees        : lignes fixes, pour les tableaux non extensibles,
+        lignes          : nombre de lignes saisies,
+        a_inserer       : nombre de lignes a inserer dans la feuille.
+    """
+    plan, decalage = [], {}
+    for feuille, prefixe, pref_lib, col_lib, premiere, imposees, reserve in TABLEAUX_DYNAMIQUES:
+        annexes = COLONNES_ANNEXES.get((feuille, prefixe), ())
+        n = _nb_lignes_saisies(
+            note3, ntexte, feuille, prefixe,
+            [pref_lib] + [p for p, _ in annexes])
+        d = decalage.get(feuille, 0)
+        a_inserer = max(0, n - reserve) if (premiere and reserve) else 0
+        plan.append({
+            "feuille": feuille, "prefixe": prefixe,
+            "prefixe_libelle": pref_lib, "colonne_libelle": col_lib,
+            "annexes": annexes, "premiere_modele": premiere,
+            "base": (premiere + d) if premiere else None,
+            "imposees": tuple(x + d for x in imposees) if imposees else None,
+            "lignes": n, "a_inserer": a_inserer,
+        })
+        decalage[feuille] = d + a_inserer
+    return plan
 
 
 def _ligne_dynamique(premiere, imposees, rang):
@@ -526,13 +592,17 @@ def _en_fraction(onglet, coord, valeur, cellules, colonnes):
         return valeur
 
 
-def preparer_saisies(note3: dict, ntexte: dict):
+def preparer_saisies(note3: dict, ntexte: dict, plan=None):
     """Rend les saisies exploitables par les deux exports.
 
     1. Les lignes de detail ajoutables recoivent leur vraie coordonnee de
        cellule, pour que l'export XML et l'export Excel les voient.
     2. Les taux saisis en points de pourcentage deviennent des fractions sur
        les cellules que le classeur presente au format pourcentage.
+
+    plan : resultat de plan_tableaux(), pour que les lignes de detail soient
+    placees aux memes coordonnees que dans le classeur etendu. Calcule ici si
+    l'appelant ne le fournit pas.
 
     Les dictionnaires d'origine ne sont pas modifies : le moteur de calcul
     continue de lire les valeurs telles qu'elles sont en base (la NOTE 37
@@ -555,7 +625,13 @@ def preparer_saisies(note3: dict, ntexte: dict):
         if t:
             n3.setdefault("NOTE 37", {})["D36"] = t
 
-    for feuille, prefixe, pref_lib, col_lib, premiere, imposees in TABLEAUX_DYNAMIQUES:
+    for entree in (plan if plan is not None else plan_tableaux(note3, ntexte)):
+        feuille = entree["feuille"]
+        prefixe = entree["prefixe"]
+        pref_lib = entree["prefixe_libelle"]
+        col_lib = entree["colonne_libelle"]
+        premiere = entree["base"]
+        imposees = entree["imposees"]
         raw = n3.get(feuille, {})
         txt = nt.get(feuille, {})
         if not raw and not txt:
@@ -570,7 +646,7 @@ def preparer_saisies(note3: dict, ntexte: dict):
                 if ligne:
                     cible["%s%d" % (m.group(1), ligne)] = valeur
         paires = [(pref_lib, col_lib)]
-        paires.extend(COLONNES_ANNEXES.get((feuille, prefixe), ()))
+        paires.extend(entree["annexes"])
         for pref, col in paires:
             motif_lib = re.compile(r"^%s_(\d+)$" % re.escape(pref))
             for cle, valeur in list(txt.items()):
@@ -798,7 +874,15 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
     # les taux saisis passent en fraction. Volontairement APRES le calcul :
     # le moteur doit continuer de lire les valeurs telles qu'elles sont en
     # base (la NOTE 37 applique elle-meme D36/100 dans sa formule).
-    note3, ntexte = preparer_saisies(note3, ntexte)
+    plan = plan_tableaux(note3, ntexte)
+    note3, ntexte = preparer_saisies(note3, ntexte, plan)
+    # Les tableaux a lignes ajoutables peuvent en compter plus que la plage
+    # reservee par le modele : c'est la saisie qui fixe leur hauteur, sans
+    # quoi un inventaire de soixante immobilisations n'en exporterait qu'une.
+    plan_par_tableau = {}
+    for e in plan:
+        if e["premiere_modele"] and e["lignes"]:
+            plan_par_tableau[(e["feuille"], e["premiere_modele"])] = e
 
     # Vue consolidée : computed[onglet][coord] = valeur
     computed: dict = dict(notes_cache)
@@ -857,6 +941,11 @@ def generate_xml(conn, exercice_id: int, client: dict, exo: dict, periode: str =
         derniere_str = tab_info.get("derniere", cols[0].get("derniere", ""))
         last_row     = _derniere_row(derniere_str) if derniere_str else premiere_row
         n_rows       = last_row - premiere_row + 1
+
+        etendu = plan_par_tableau.get((cols[0]["onglet"], premiere_row))
+        if etendu:
+            premiere_row = etendu["base"]
+            n_rows = max(n_rows, etendu["lignes"])
 
         # Les tableaux d'identification ont un nombre de lignes propre : il
         # vient de la saisie, pas de l'etendue d'une plage du classeur.
