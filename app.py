@@ -6424,7 +6424,7 @@ def handle_upload(req, conn, exercice_id):
 # le fichier XML, lui, partait vide sur ces trois etats. La passerelle
 # ci-dessous les transforme en caches de cellules, comme les feuilles du
 # moteur, pour que l'export EDI porte exactement ce qui est affiche.
-FEUILLES_PYTHON = ("COMP-CHARGES", "NOTE 31", "NOTE 34")
+FEUILLES_PYTHON = ("COMP-CHARGES", "NOTE 31", "NOTE 34", "NOTE 27B")
 
 
 def caches_feuilles_python(balN, balN1, tftn, tftn1, manual, bilan, resultat, tft):
@@ -6452,6 +6452,26 @@ def caches_feuilles_python(balN, balN1, tftn, tftn1, manual, bilan, resultat, tf
             for col, val in (r.get("vals") or {}).items():
                 if val not in (None, ""):
                     cible["%s%d" % (col, r["row"])] = val
+    except Exception:
+        pass
+
+    # NOTE 27B : feuille de saisie dont tous les agregats (totaux par
+    # categorie, masse salariale, "Total frais de personnel ligne RK") sont
+    # calcules en Python. Sans cette reprise, le total RK partait vide.
+    try:
+        lignes, bloc = compute_note27b(manual)
+        cible = caches.setdefault("NOTE 27B", {})
+        for r in lignes or ():
+            for col, val in (r.get("vals") or {}).items():
+                if val not in (None, ""):
+                    cible["%s%d" % (col, r["row"])] = val
+        if bloc:
+            if bloc.get("total") not in (None, ""):
+                cible["R25"] = bloc["total"]
+            if bloc.get("b") not in (None, ""):
+                cible["R22"] = bloc["b"]
+            if bloc.get("c") not in (None, ""):
+                cible["R24"] = bloc["c"]
     except Exception:
         pass
 

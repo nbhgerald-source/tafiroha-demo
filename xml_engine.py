@@ -751,6 +751,11 @@ def _en_fraction(onglet, coord, valeur, cellules, colonnes):
         return valeur
 
 
+def ce_num(v):
+    import calc_engine as _ce
+    return _ce._num(v)
+
+
 def preparer_saisies(note3: dict, ntexte: dict, plan=None):
     """Rend les saisies exploitables par les deux exports.
 
@@ -860,6 +865,21 @@ def preparer_saisies(note3: dict, ntexte: dict, plan=None):
         total13 += ce13._num(raw13.get("K%d" % ligne_apporteurs))
         if total13:
             raw13["K%d" % (ligne_apporteurs + 1)] = total13
+
+    # Totaux que le classeur calcule par une formule auto-ajustable : ils
+    # rejoignent les saisies, sans quoi la ligne "TOTAL PRODUITS ACCESSOIRES"
+    # de la NOTE 21 partait vide dans le fichier XML.
+    for feuille, cellules in totaux_dynamiques(note3).items():
+        cible = n3.setdefault(feuille, {})
+        for coord, valeur in cellules.items():
+            cible.setdefault(coord, valeur)
+        # Colonne de variation N/N-1, calculee comme le fait le classeur.
+        if feuille == "NOTE 21":
+            f27, g27 = ce_num(cible.get("F27")), ce_num(cible.get("G27"))
+            if g27:
+                cible.setdefault("H27", round((f27 - g27) / g27, 4))
+            elif f27:
+                cible.setdefault("H27", 1 if f27 > 0 else -1)
 
     normaliser_listes(n3, nt)
 

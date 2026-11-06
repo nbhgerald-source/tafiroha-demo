@@ -2,6 +2,11 @@
 
 {% macro dyn_table(sheet, count_key, coord_prefix, desig_prefix, rows, cols, totals, n, anchor=None, nv_vals=None, nv_label=None) %}
 <form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
   <input type="hidden" name="note3_sheet" value="{{ sheet }}">
   <input type="hidden" name="cell_{{ count_key }}" value="{{ n }}">
   <table>
@@ -64,6 +69,11 @@
 
 {% macro note30_group(sheet, g, count_key, coord_prefix, desig_prefix, anchor=None) %}
 <form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
   <input type="hidden" name="note3_sheet" value="{{ sheet }}">
   <input type="hidden" name="cell_{{ count_key }}" value="{{ g.n_detail }}">
   <table>
@@ -115,6 +125,11 @@
   {% for v in listes_note13.get('nature_actions', []) %}<option value="{{ v }}">{% endfor %}
 </datalist>
 <form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
   <input type="hidden" name="note3_sheet" value="NOTE 13">
   <p>
     <label>Valeur nominale des actions ou parts :
@@ -159,6 +174,11 @@
 
 {% macro note21_table(note21, anchor=None) %}
 <form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
   <input type="hidden" name="note3_sheet" value="NOTE 21">
   <input type="hidden" name="cell__N_PA" value="{{ note21.pa_n }}">
   <table>
@@ -252,6 +272,11 @@
 
 {% macro note3e_table(note3e, anchor=None) %}
 <form method="post"{% if anchor %} action="#{{ anchor }}"{% endif %}>
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
   <input type="hidden" name="note3_sheet" value="NOTE 3E">
   <input type="hidden" name="cell__N_REEVAL" value="{{ note3e.n }}">
   <p>
@@ -342,6 +367,11 @@
 {% endmacro %}
 
 {% block content %}
+<style>
+.submit-defaut { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+                 border:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+</style>
+
 <div class="card">
   <h2>{{ client['raison_sociale'] }} — Exercice {{ exo['annee'] }}</h2>
   <p>
@@ -1146,6 +1176,11 @@
   <p class="muted">Les valeurs ci-dessus sont reprises automatiquement de la feuille <a href="#sommaire">SOMMAIRE</a> —
     elles ne se saisissent pas ici.</p>
   <form method="post" action="#fiche-r1">
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
     <input type="hidden" name="note_texte_sheet" value="FICHE R1">
     <h4>Personne à contacter / Expert-comptable / Commissaire aux comptes / Signature</h4>
     {% for champ, label in fiche_r1_champs %}
@@ -1177,6 +1212,11 @@
   </table>
   <p class="muted">(1) Note 36 (TABLE DES CODES). Ces valeurs et codes sont repris automatiquement de la feuille SOMMAIRE — pour les modifier, voir la feuille SOMMAIRE.</p>
   <form method="post" action="#fiche-r2">
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
     <input type="hidden" name="note_texte_sheet" value="FICHE R2">
     <h4>Contrôle de l'Entité</h4>
     <p><label>Veuillez sélectionner le type de contrôle dans la liste</label>
@@ -1250,6 +1290,11 @@
 <div class="card" id="fiche-r3">
   <h3>FICHE R3 — Identification et renseignements divers 3</h3>
   <form method="post" action="#fiche-r3">
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
     <input type="hidden" name="note_texte_sheet" value="FICHE R3">
     <h4>Dirigeants (PDG, DG, Administrateur Général, Gérant, Autres)</h4>
     <table>
@@ -1751,6 +1796,11 @@
 
   <h4>Complément note annexe</h4>
   <form method="post" action="#suppl1">
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
     <input type="hidden" name="note3_sheet" value="SUPPL1">
     <input type="hidden" name="note_texte_sheet" value="SUPPL1">
     <input type="hidden" name="cell__N_ANNEXE" value="{{ suppl1.annexe_n }}">
@@ -1775,6 +1825,11 @@
 
   <h4 style="margin-top:1.5em">Complément note 32 — détail de produits (vente UEMOA / hors UEMOA)</h4>
   <form method="post" action="#suppl1">
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
     <input type="hidden" name="note3_sheet" value="SUPPL1">
     <input type="hidden" name="note_texte_sheet" value="SUPPL1">
     <input type="hidden" name="cell__N_PRODUIT" value="{{ suppl1.produit_n }}">
@@ -1855,6 +1910,11 @@
 <div class="card landscape" id="suppl2">
   <h2>ÉTAT SUPPLÉMENTAIRE N°2 — RÉPARTITION DU RÉSULTAT FISCAL DES SOCIÉTÉS DE PERSONNES (DGI-INS)</h2>
   <form method="post" action="#suppl2">
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
     <input type="hidden" name="note3_sheet" value="SUPPL2">
     <input type="hidden" name="note_texte_sheet" value="SUPPL2">
     <input type="hidden" name="cell__N_DETAIL" value="{{ suppl2.n }}">
@@ -1891,6 +1951,11 @@
 <div class="card landscape" id="suppl4">
   <h2>ÉTAT SUPPLÉMENTAIRE N°4 — TABLEAU DES AMORTISSEMENTS ET INVENTAIRE DES IMMOBILISATIONS (DGI-INS)</h2>
   <form method="post" action="#suppl4">
+  {# Bouton par defaut du formulaire : la touche Entree declenche le
+     PREMIER bouton de type submit. Sans celui-ci, valider au clavier
+     dans une case de saisie ajoutait une ligne au lieu d'enregistrer,
+     puisque "+ Ajouter une ligne" vient avant "Enregistrer". #}
+  <button type="submit" class="submit-defaut" tabindex="-1" aria-hidden="true"></button>
     <input type="hidden" name="note3_sheet" value="SUPPL4">
     <input type="hidden" name="note_texte_sheet" value="SUPPL4">
     <input type="hidden" name="cell__N_DETAIL" value="{{ suppl4.n }}">
