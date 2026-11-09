@@ -4232,7 +4232,11 @@ def view_login(req, conn):
                 elif row["role"] == "gestionnaire":
                     dest = "/gestionnaire"
                 else:
-                    dest = "/client/%d" % row["client_id"]
+                    # Un utilisateur suivant plusieurs clients doit arriver sur
+                    # la page de choix, pas sur l'un d'eux au hasard. La
+                    # colonne client_id ne connait que le premier rattachement,
+                    # et vaut NULL pour un compte cree en multi-dossiers.
+                    dest = destination_client(conn, row)
                 return redirect(dest, set_cookie=token)
         if not error:
             error = "Identifiants invalides."
@@ -5785,7 +5789,11 @@ def view_client_dashboard(req, conn, user, client_id):
     exercices = conn.execute(
         "SELECT * FROM exercices WHERE client_id=? ORDER BY annee DESC", (client_id,)
     ).fetchall()
-    return Response(render("client_dashboard.html", user=user, client=client, exercices=exercices))
+    # Un utilisateur rattache a plusieurs dossiers doit pouvoir passer de
+    # l'un a l'autre : sans ce lien, il restait prisonnier du premier ouvert.
+    plusieurs = user["role"] == "client" and len(user_client_ids(conn, user)) > 1
+    return Response(render("client_dashboard.html", user=user, client=client,
+                           exercices=exercices, plusieurs_clients=plusieurs))
 
 
 def _clients_visibles(conn, user, exclure=None):
