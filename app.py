@@ -5814,6 +5814,36 @@ def _client_visible(conn, user, client_id):
     return r is not None and r["created_by"] == user["id"]
 
 
+def _compte_rattachable(conn, user, cible, client_id):
+    """Un gestionnaire ne rattache que des comptes de son propre portefeuille.
+
+    L'admin n'a pas de restriction. Sans ce garde-fou, un gestionnaire
+    pourrait s'octroyer le compte d'un confrere en devinant son identifiant."""
+    if user["role"] == "admin":
+        return True
+    siens = {c["id"] for c in _clients_visibles(conn, user)}
+    return bool(siens & user_client_ids(conn, cible))
+
+
+def _comptes_a_rattacher(conn, user, client_id):
+    """Comptes clients que l'on peut rattacher a ce dossier : ceux du
+    portefeuille de l'utilisateur courant qui n'y ont pas deja acces."""
+    deja = {r["user_id"] for r in conn.execute(
+        "SELECT user_id FROM user_clients WHERE client_id=?", (client_id,))}
+    deja |= {r["id"] for r in conn.execute(
+        "SELECT id FROM users WHERE role='client' AND client_id=?", (client_id,))}
+    out = []
+    # client_id est indispensable : user_client_ids le consulte en secours
+    # quand la table user_clients ne porte encore aucun rattachement.
+    for u in conn.execute(
+            "SELECT id, email, client_id FROM users WHERE role='client' ORDER BY email"):
+        if u["id"] in deja:
+            continue
+        if _compte_rattachable(conn, user, u, client_id):
+            out.append(u)
+    return out
+
+
 def view_client_users(req, conn, user, client_id):
     """Gestion des comptes utilisateurs rattachés à un client.
     Réservée aux rôles admin et gestionnaire (créateur du client)."""
@@ -5845,6 +5875,31 @@ def view_client_users(req, conn, user, client_id):
                 conn.execute("DELETE FROM users WHERE id=?", (uid,))
                 conn.commit()
                 success = "Utilisateur supprimé."
+
+    # Rattachement d'un compte existant a ce dossier. Sans cela, il fallait
+    # partir du dossier ou le compte figure deja pour lui ajouter un acces :
+    # depuis le dossier concerne, le geste etait impossible.
+    elif req.method == "POST" and req.form.get("action") == "attacher":
+        try:
+            uid = int(req.form.get("user_id", ""))
+        except (TypeError, ValueError):
+            uid = None
+        cible = conn.execute(
+            "SELECT * FROM users WHERE id=? AND role='client'", (uid,)
+        ).fetchone() if uid else None
+        if not cible:
+            error = "Choisissez un compte a rattacher."
+        elif not _compte_rattachable(conn, user, cible, client_id):
+            error = "Ce compte ne fait pas partie des dossiers que vous gerez."
+        else:
+            conn.execute(
+                "INSERT OR REPLACE INTO user_clients (user_id, client_id) VALUES (?,?)",
+                (cible["id"], client_id),
+            )
+            if not cible["client_id"]:
+                conn.execute("UPDATE users SET client_id=? WHERE id=?", (client_id, cible["id"]))
+            conn.commit()
+            success = "%s a desormais acces a ce dossier." % cible["email"]
 
     # Ajout d'un nouvel utilisateur pour ce client
     elif req.method == "POST" and req.form.get("action") == "add":
@@ -5914,6 +5969,7 @@ def view_client_users(req, conn, user, client_id):
         "client_users.html",
         user=user, client=client, users_list=users_list, error=error, success=success,
         rattachements=rattachements, autres_clients=autres_clients,
+        comptes_a_rattacher=_comptes_a_rattacher(conn, user, client_id),
     ))
 
 

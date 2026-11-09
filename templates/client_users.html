@@ -55,6 +55,25 @@
   {% endif %}
 </div>
 
+{% if comptes_a_rattacher %}
+<div class="card">
+  <h3>Rattacher un compte existant</h3>
+  <p class="muted">Donner à un compte déjà créé l'accès à {{ client['raison_sociale'] }}.
+    Il gardera ses dossiers actuels et pourra passer de l'un à l'autre.</p>
+  <form method="post">
+    <input type="hidden" name="action" value="attacher">
+    <label>Compte</label>
+    <select name="user_id" required>
+      <option value="">— choisir un compte —</option>
+      {% for u in comptes_a_rattacher %}
+      <option value="{{ u['id'] }}">{{ u['email'] }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn" type="submit" style="margin-top:10px">Rattacher à ce dossier</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="card" style="max-width:480px;">
   <h3>Ajouter un utilisateur</h3>
   <p class="muted">Ce compte aura accès en lecture/saisie à {{ client['raison_sociale'] }}.
