@@ -4559,6 +4559,7 @@ def lancer_revision(conn, exercice_id, exo, client):
         overrides=_revision_overrides(conn, client["id"] if client else None),
         mappings=_revision_mappings(conn, client["id"] if client else None, exercice_id),
         notes=_notes_pour_revision(balN, balN1),
+        tftn=tftn,
     )
 
     vues = set()
@@ -4657,6 +4658,7 @@ def _revision_detail_complet(conn, exercice_id, exo, client):
         overrides=_revision_overrides(conn, client["id"] if client else None),
         mappings=_revision_mappings(conn, client["id"] if client else None, exercice_id),
         notes=_notes_pour_revision(balN, balN1),
+        tftn=tftn,
         condenser=False,
     )
 

@@ -963,8 +963,56 @@ def controles_var(c, balN, balN1, bilan):
 # ---------------------------------------------------------------------------
 # ETA  coherence inter-etats
 # ---------------------------------------------------------------------------
+# Definition exacte de la tresorerie retenue par le TFT, relevee sur la
+# cellule TFT!I10 du classeur officiel. Le bilan applique la meme, a ceci
+# pres qu'il ignore le compte 4726. Toute comparaison doit partir de la
+# meme definition, sans quoi l'ecart annonce n'est pas celui que le
+# comptable peut corriger.
+#   (signe, colonne, borne basse, borne haute)
+TRESORERIE_TFT = (
+    (+1, "debit",  50000, 51000),   # titres de placement
+    (-1, "credit", 59000, 59100),
+    (+1, "debit",  51000, 52000),   # valeurs a encaisser
+    (-1, "credit", 59100, 59200),
+    (+1, "debit",  52000, 58000),   # banques, caisses
+    (+1, "debit",  58100, 58300),   # virements de fonds
+    (-1, "credit", 59200, 59500),
+    (-1, "credit", 56400, 56600),   # concours bancaires
+    (-1, "credit", 52000, 54000),   # banques crediteurs
+    (-1, "credit", 56100, 56200),
+    (-1, "credit", 56600, 56700),
+    (-1, "credit", 47260, 47270),   # present dans le TFT, absent du bilan
+)
+
+
+def _tresorerie_tft(rows, quand="bs"):
+    """Tresorerie au sens du TFT, sur la balance d'entree ou de sortie."""
+    total = 0.0
+    for signe, colonne, lo, hi in TRESORERIE_TFT:
+        champ = "%s_%s" % (quand, colonne)
+        for r in rows or []:
+            if lo <= r.get("table", 0) < hi:
+                total += signe * _n(r.get(champ))
+    return total
+
+
+def _mouvements_tresorerie(rows, tol):
+    """Variation de chaque compte de tresorerie, de l'ouverture a la cloture."""
+    bornes = {(lo, hi) for _s, _c, lo, hi in TRESORERIE_TFT}
+    mouvements = []
+    for r in rows or []:
+        t = r.get("table", 0)
+        if not any(lo <= t < hi for lo, hi in bornes):
+            continue
+        variation = _solde(r) - _solde(r, "be")
+        if abs(variation) > tol:
+            mouvements.append((str(r.get("compte")), variation))
+    mouvements.sort(key=lambda x: -abs(x[1]))
+    return mouvements
+
+
 def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
-                  manual=None):
+                  manual=None, tftn=None, sheets_raw=None):
     def v(d, k):
         return _n((d or {}).get(k))
 
@@ -1045,11 +1093,33 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
                   "TFT : tresorerie d'ouverture (%s) plus variation (%s) ne donne pas "
                   "la tresorerie de cloture (%s)" % (_fmt(A), _fmt(VARI), _fmt(FIN)),
                   BLOQUANT, None, A + VARI - FIN)
-        if abs(FIN - tres_n) > tol:
+        # Comparaison a definition egale : la cloture attendue se calcule sur
+        # la balance de sortie avec la formule meme du TFT (voir TFT!I10),
+        # et non sur une somme brute de la classe 5 qui n'a pas les memes
+        # bornes. L'ecart restant est alors reellement imputable au TFT.
+        cloture_reelle = _tresorerie_tft(balN, "bs")
+        ouverture_reelle = _tresorerie_tft(balN, "be")
+        if abs(FIN - cloture_reelle) > tol:
+            variation_reelle = cloture_reelle - ouverture_reelle
+            mouvements = _mouvements_tresorerie(balN, tol)
+            detail = ", ".join("%s (%s)" % (cpt, _fmt(m)) for cpt, m in mouvements[:6])
+            manque_detail = ""
+            if not tftn and any(abs(m) > tol for _c, m in mouvements):
+                manque_detail = (" Le detail TFT (feuille Table TFT) n'a pas ete "
+                                 "importe alors que les comptes de tresorerie ont "
+                                 "bouge : plusieurs lignes de flux restent a zero.")
             c.add("ETA-12", "ETA",
-                  "TFT : tresorerie de cloture (%s) differente des comptes de tresorerie "
-                  "de la balance N (%s)" % (_fmt(FIN), _fmt(tres_n)),
-                  BLOQUANT, None, FIN - tres_n)
+                  "TFT : tresorerie de cloture (%s) differente de la tresorerie reelle "
+                  "au 31/12 (%s), ecart de %s. Decomposition : ouverture %s + flux du "
+                  "TFT %s = %s, alors que la variation reelle des comptes de tresorerie "
+                  "est de %s. L'ecart porte donc sur les flux, repartis en operationnels "
+                  "%s, investissement %s, financement %s.%s Comptes de tresorerie ayant "
+                  "le plus bouge : %s."
+                  % (_fmt(FIN), _fmt(cloture_reelle), _fmt(FIN - cloture_reelle),
+                     _fmt(ouverture_reelle), _fmt(VARI), _fmt(ouverture_reelle + VARI),
+                     _fmt(variation_reelle), _fmt(B), _fmt(C_), _fmt(F),
+                     manque_detail, detail or "aucun"),
+                  BLOQUANT, None, FIN - cloture_reelle)
         if balN1 and abs(A - tres_n1) > tol:
             # Sans le detail par compte, ce constat n'indique pas ou chercher.
             # La cause est toujours la meme : pour au moins un compte 5x, la
@@ -1105,10 +1175,25 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
                       BLOQUANT, None, residu if ecarts else A - tres_n1)
         tres_bilan = v(bilan, "H37") - v(bilan, "M37")
         if tres_bilan and abs(FIN - tres_bilan) > tol:
+            # Le TFT retranche le compte 4726, pas le bilan : c'est la seule
+            # difference de definition entre les deux, et elle s'explique.
+            c4726 = sum(_n(r.get("bs_credit")) for r in (balN or [])
+                        if 47260 <= r.get("table", 0) < 47270)
+            ecart = FIN - tres_bilan
+            if abs(abs(ecart) - abs(c4726)) <= tol and c4726:
+                piste = (" Cet ecart correspond au compte 4726 (%s), que le TFT "
+                         "retranche de la tresorerie et que le bilan ignore : il n'y "
+                         "a rien a corriger dans la balance." % _fmt(c4726))
+            else:
+                piste = (" Le bilan et le TFT retiennent la meme definition de la "
+                         "tresorerie, au compte 4726 pres (%s ici). L'ecart vient donc "
+                         "des flux du TFT : voir le detail donne par ETA-12."
+                         % _fmt(c4726))
             c.add("ETA-14", "ETA",
                   "TFT : tresorerie de cloture (%s) differente de la tresorerie nette "
-                  "du bilan, actif moins passif (%s)" % (_fmt(FIN), _fmt(tres_bilan)),
-                  BLOQUANT, None, FIN - tres_bilan)
+                  "du bilan, actif moins passif (%s), ecart de %s.%s"
+                  % (_fmt(FIN), _fmt(tres_bilan), _fmt(ecart), piste),
+                  BLOQUANT, None, ecart)
 
     # ── Notes : rattachement du total de chaque note a la balance ───────────
     #
@@ -1183,18 +1268,68 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
     # sans desequilibre apparent puisque le passif n'est pas concerne. On
     # rapproche donc le total de la colonne de la somme reelle des comptes
     # d'amortissement et de depreciation de la balance.
+    # ETA-18 : la colonne "AMORT. ET DEPREC." du bilan est alimentee par une
+    # mosaique de sous-plages (28100-28120, 28181-28182, 28182-28190...). Elle
+    # laisse des trous : un amortissement pose sur un compte racine (2818,
+    # 2918, 2939...) n'est deduit nulle part et l'actif ressort surevalue,
+    # sans desequilibre apparent puisque le passif n'est pas concerne.
+    #
+    # Les comptes 499 (risques provisionnes) et 599 sont exclus du
+    # rapprochement : le bilan les porte au PASSIF, lignes "Provisions pour
+    # risques a court terme" (M32) et "Dettes circulantes" (M45). Les compter
+    # comme deduits de l'actif produisait une anomalie que rien ne pouvait
+    # corriger, la balance etant juste.
     amort_bilan = v(bilan, "G39")
     amort_balance = -(_somme(balN, 28000, 30000) + _somme(balN, 39000, 40000)
-                      + _somme(balN, 49000, 50000) + _somme(balN, 59000, 60000))
+                      + _somme(balN, 49000, 49900) + _somme(balN, 59000, 59500))
     if (amort_bilan or amort_balance) and abs(amort_bilan - amort_balance) > tol:
+        # Nommer les comptes en cause. Les plages reellement captees par la
+        # colonne sont relues dans les formules du classeur : la liste reste
+        # juste meme si le modele evolue.
+        # Seules les lignes 11 a 37 de la colonne G alimentent le total G39.
+        # Le bloc G43-G48, plus bas, est un recapitulatif a plages larges :
+        # l'inclure masquerait justement les comptes mal places.
+        captees = []
+        for coord, formule in (sheets_raw or {}).get("BILAN", {}).items():
+            if not (coord.startswith("G") and isinstance(formule, str)):
+                continue
+            try:
+                ligne = int(coord[1:])
+            except ValueError:
+                continue
+            if not (11 <= ligne <= 37):
+                continue
+            bornes = re.findall(r'"(?:>=|<)(\d+)"', formule)
+            for i in range(0, len(bornes) - 1, 2):
+                captees.append((int(bornes[i]), int(bornes[i + 1])))
+        orphelins = []
+        for r in (balN or []):
+            t = r.get("table", 0)
+            if not (28000 <= t < 30000 or 39000 <= t < 40000
+                    or 49000 <= t < 49900 or 59000 <= t < 59500):
+                continue
+            if any(lo <= t < hi for lo, hi in captees):
+                continue
+            solde = _solde(r)
+            if abs(solde) > tol:
+                orphelins.append((str(r.get("compte")), -solde))
+        orphelins.sort(key=lambda x: -abs(x[1]))
+        if orphelins:
+            piste = (" Comptes qu'aucune ligne du bilan ne capte, pour %s au total : "
+                     "%s. Codifiez-les sur un sous-compte detaille depuis la page "
+                     "Codification."
+                     % (_fmt(sum(x[1] for x in orphelins)),
+                        ", ".join("%s (%s)" % (cpt, _fmt(m)) for cpt, m in orphelins[:8])))
+        else:
+            piste = (" Tous les comptes d'amortissement et de depreciation sont captes "
+                     "par une ligne du bilan : l'ecart ne vient pas d'un compte mal "
+                     "place mais d'une ligne du bilan, a examiner note par note.")
         c.add("ETA-18", "ETA",
               "Bilan : les amortissements et depreciations deduits de l'actif (%s) ne "
-              "correspondent pas aux comptes 28, 29, 39, 49 et 59 de la balance (%s), "
-              "ecart de %s. Un compte d'amortissement ou de depreciation est pose a un "
-              "niveau qu'aucune ligne du bilan ne capte : son montant n'est pas deduit "
-              "et l'actif net est surevalue d'autant. Codifiez-le sur un sous-compte "
-              "detaille depuis la page Codification."
-              % (_fmt(amort_bilan), _fmt(amort_balance), _fmt(amort_bilan - amort_balance)),
+              "correspondent pas aux comptes 28, 29, 39, 490 a 498 et 590 a 594 de la "
+              "balance (%s), ecart de %s.%s"
+              % (_fmt(amort_bilan), _fmt(amort_balance),
+                 _fmt(amort_bilan - amort_balance), piste),
               BLOQUANT, None, amort_bilan - amort_balance)
 
     # ETA-29 : rapprochement de l'inventaire des immobilisations (feuille
@@ -1410,9 +1545,72 @@ def controles_cpl(c, client, exo, manual, balN, textes=None):
 # ---------------------------------------------------------------------------
 # point d'entree
 # ---------------------------------------------------------------------------
+
+# Rapprochements de la feuille "Controle Mouvement" du classeur : une
+# dotation doit se retrouver au credit du compte d'amortissement ou de
+# depreciation correspondant, une reprise au debit. Un ecart signale une
+# ecriture passee d'un seul cote — cause frequente d'un bilan qui ne se
+# recoupe plus avec ses notes, et piste la plus directe quand ETA-18 reste
+# inexplique.
+#   (code, libelle, [(sens, champ, lo, hi, nom)...])
+CONTROLES_MOUVEMENT = (
+    ("ETA-30", "Dotations aux provisions pour risques et charges",
+     [(+1, "mvt_debit", 69100, 69500, "691 dotations"),
+      (+1, "mvt_debit", 69200, 69300, "697 dotations HAO"),
+      (+1, "mvt_debit", 85300, 85400, "853 dotations HAO"),
+      (-1, "mvt_credit", 29000, 30000, "29 provisions"),
+      (-1, "mvt_credit", 19000, 20000, "19 provisions financieres")]),
+    ("ETA-31", "Reprises de provisions pour risques et charges",
+     [(+1, "mvt_debit", 29000, 30000, "29 provisions"),
+      (+1, "mvt_debit", 19000, 20000, "19 provisions financieres"),
+      (-1, "mvt_credit", 79100, 79200, "791 reprises"),
+      (-1, "mvt_credit", 79700, 79800, "797 reprises HAO"),
+      (-1, "mvt_credit", 86300, 86400, "863 reprises HAO")]),
+    ("ETA-32", "Dotations aux depreciations d'actif circulant",
+     [(+1, "mvt_debit", 65900, 66000, "659 charges"),
+      (+1, "mvt_debit", 83900, 84000, "839 charges HAO"),
+      (-1, "mvt_credit", 39000, 40000, "39 depreciations de stocks"),
+      (-1, "mvt_credit", 49000, 50000, "49 depreciations de tiers")]),
+    ("ETA-33", "Reprises de depreciations d'actif circulant",
+     [(+1, "mvt_debit", 39000, 40000, "39 depreciations de stocks"),
+      (+1, "mvt_debit", 49000, 50000, "49 depreciations de tiers"),
+      (-1, "mvt_credit", 75900, 76000, "759 reprises"),
+      (-1, "mvt_credit", 84900, 85000, "849 reprises HAO")]),
+    ("ETA-34", "Dotations et reprises sur comptes de tresorerie",
+     [(+1, "mvt_debit", 67900, 68000, "679 charges"),
+      (-1, "mvt_credit", 59000, 60000, "59 depreciations"),
+      (+1, "mvt_debit", 59000, 60000, "59 depreciations"),
+      (-1, "mvt_credit", 77900, 78000, "779 reprises")]),
+    ("ETA-35", "Dotations aux amortissements",
+     [(+1, "mvt_debit", 68000, 69000, "68 dotations"),
+      (-1, "mvt_credit", 28000, 29000, "28 amortissements")]),
+)
+
+
+def controles_mouvement(c, balN):
+    """Rapproche les charges et reprises de leurs comptes de contrepartie."""
+    tol = max(1.0, c.p["seuil_absolu"] / 1000.0)
+    for code, libelle, postes in CONTROLES_MOUVEMENT:
+        total, detail = 0.0, []
+        for signe, champ, lo, hi, nom in postes:
+            montant = _somme(balN, lo, hi, champ=champ)
+            total += signe * montant
+            if abs(montant) > tol:
+                detail.append("%s %s" % (nom, _fmt(montant)))
+        if abs(total) > tol and detail:
+            c.add(code, "ETA",
+                  "%s : l'ecriture ne se boucle pas, ecart de %s sur les mouvements de "
+                  "l'exercice (%s). Une dotation doit avoir sa contrepartie au credit du "
+                  "compte d'amortissement ou de depreciation, une reprise au debit. "
+                  "Verifiez le journal des operations d'inventaire."
+                  % (libelle, _fmt(total), " ; ".join(detail)),
+                  JUSTIFIER, None, total)
+
+
 def run_controls(balN, balN1, bilan=None, resultat=None, tft=None, manual=None,
                  client=None, exo=None, sheets_raw=None, params=None, overrides=None,
-                 mappings=None, notes=None, condenser=True, textes=None):
+                 mappings=None, notes=None, condenser=True, textes=None,
+                 tftn=None):
     """Execute l'ensemble des familles et retourne la liste des anomalies.
 
     condenser=False renvoie le detail integral, sans regroupement : c'est ce que
@@ -1441,7 +1639,9 @@ def run_controls(balN, balN1, bilan=None, resultat=None, tft=None, manual=None,
         (controles_imm, (balN, balN1, manual), "IMM"),
         (controles_stk, (balN, balN1), "STK"),
         (controles_var, (balN, balN1, bilan), "VAR"),
-        (controles_eta, (bilan, resultat, tft, balN, balN1, notes, manual), "ETA"),
+        (controles_eta, (bilan, resultat, tft, balN, balN1, notes, manual, tftn,
+                         sheets_raw), "ETA"),
+        (controles_mouvement, (balN,), "ETA"),
         (controles_cpl, (client, exo, manual, balN, textes), "CPL"),
     ):
         try:
