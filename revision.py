@@ -1108,9 +1108,17 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
                 manque_detail = (" Le detail TFT (feuille Table TFT) n'a pas ete "
                                  "importe alors que les comptes de tresorerie ont "
                                  "bouge : plusieurs lignes de flux restent a zero.")
+            transit = sum(_n(r.get("bs_debit")) for r in (balN or [])
+                          if 58300 <= r.get("table", 0) < 59000)
+            if abs(transit) > tol:
+                manque_detail += (" A noter : %s figurent sur des comptes 583 a 589 "
+                                  "(virements de fonds). Le bilan les compte dans la "
+                                  "tresorerie, le TFT non. Ces comptes de transit "
+                                  "doivent etre soldes a la cloture." % _fmt(transit))
             c.add("ETA-12", "ETA",
-                  "TFT : tresorerie de cloture (%s) differente de la tresorerie reelle "
-                  "au 31/12 (%s), ecart de %s. Decomposition : ouverture %s + flux du "
+                  "TFT : tresorerie de cloture (%s) differente de la tresorerie de la "
+                  "balance au sens du TFT, comptes 50 a 582 moins les 59 et les "
+                  "concours bancaires (%s), ecart de %s. Decomposition : ouverture %s + flux du "
                   "TFT %s = %s, alors que la variation reelle des comptes de tresorerie "
                   "est de %s. L'ecart porte donc sur les flux, repartis en operationnels "
                   "%s, investissement %s, financement %s.%s Comptes de tresorerie ayant "
@@ -1179,16 +1187,29 @@ def controles_eta(c, bilan, resultat, tft, balN, balN1=None, notes=None,
             # difference de definition entre les deux, et elle s'explique.
             c4726 = sum(_n(r.get("bs_credit")) for r in (balN or [])
                         if 47260 <= r.get("table", 0) < 47270)
+            # Le bilan compte les comptes 583 a 589 dans la tresorerie (cellule
+            # F36, bornes 58100-59000), le TFT s'arrete a 58300. Avec le 4726,
+            # ce sont les deux seules differences de definition entre les deux
+            # etats : le pont ci-dessous explique l'ecart en entier.
+            transit = sum(_n(r.get("bs_debit")) for r in (balN or [])
+                          if 58300 <= r.get("table", 0) < 59000)
             ecart = FIN - tres_bilan
-            if abs(abs(ecart) - abs(c4726)) <= tol and c4726:
-                piste = (" Cet ecart correspond au compte 4726 (%s), que le TFT "
-                         "retranche de la tresorerie et que le bilan ignore : il n'y "
-                         "a rien a corriger dans la balance." % _fmt(c4726))
+            ponts = []
+            if abs(transit) > tol:
+                ponts.append("comptes 583 a 589, virements de fonds, que le bilan "
+                             "compte et pas le TFT : %s" % _fmt(transit))
+            if abs(c4726) > tol:
+                ponts.append("compte 4726, que le TFT retranche et pas le bilan : %s"
+                             % _fmt(c4726))
+            reste = ecart + transit + c4726
+            if ponts:
+                piste = (" Difference de definition entre les deux etats : %s. Reste %s "
+                         "imputable aux flux du TFT : voir le detail donne par ETA-12."
+                         % (" ; ".join(ponts), _fmt(reste)))
             else:
-                piste = (" Le bilan et le TFT retiennent la meme definition de la "
-                         "tresorerie, au compte 4726 pres (%s ici). L'ecart vient donc "
-                         "des flux du TFT : voir le detail donne par ETA-12."
-                         % _fmt(c4726))
+                piste = (" Le bilan et le TFT retiennent ici la meme definition de la "
+                         "tresorerie : l'ecart vient entierement des flux du TFT, voir "
+                         "le detail donne par ETA-12.")
             c.add("ETA-14", "ETA",
                   "TFT : tresorerie de cloture (%s) differente de la tresorerie nette "
                   "du bilan, actif moins passif (%s), ecart de %s.%s"
